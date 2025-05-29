@@ -108,7 +108,7 @@ class M6800Simulator:
             self.debug_print(f"🔄 DEBUG: Reloaded {len(self.program_data)} bytes into memory")
         else:
             self.debug_print("🔄 DEBUG: No program data to restore")
-    
+        
     def load_program(self, object_data: Dict[int, int]):
         """
         Load program data into memory.
@@ -212,8 +212,8 @@ class M6800Simulator:
                 break
         
         self.debug_print(f"🚀 DEBUG: Run completed, executed {executed} instructions")
-        return executed 
-
+        return executed
+    
     def _execute_instruction(self, opcode: int):
         """Execute a single instruction based on opcode."""
         pc = self.registers['PC']
@@ -243,6 +243,60 @@ class M6800Simulator:
             self.debug_print("🔍 DEBUG: CLV - clearing overflow flag")
             self.cc_flags['V'] = 0
             self._pack_cc_register()
+            self.registers['PC'] += 1
+            
+        elif opcode == 0x40:  # NEGA (Negate A)
+            old_a = self.registers['A']
+            self.registers['A'] = (256 - old_a) & 0xFF
+            self.debug_print(f"🔍 DEBUG: NEGA, A=${old_a:02X} -> ${self.registers['A']:02X}")
+            self.cc_flags['C'] = 1 if old_a != 0 else 0
+            self.cc_flags['V'] = 1 if old_a == 0x80 else 0
+            self._update_nz_flags(self.registers['A'])
+            self.registers['PC'] += 1
+            
+        elif opcode == 0x4A:  # DECA (Decrement A)
+            old_a = self.registers['A']
+            self.registers['A'] = (self.registers['A'] - 1) & 0xFF
+            self.debug_print(f"🔍 DEBUG: DECA, A=${old_a:02X} -> ${self.registers['A']:02X}")
+            self.cc_flags['V'] = 1 if old_a == 0x80 else 0  # Overflow if $80 -> $7F
+            self._update_nz_flags(self.registers['A'])
+            self.registers['PC'] += 1
+            
+        elif opcode == 0x5A:  # DECB (Decrement B)
+            old_b = self.registers['B']
+            self.registers['B'] = (self.registers['B'] - 1) & 0xFF
+            self.debug_print(f"🔍 DEBUG: DECB, B=${old_b:02X} -> ${self.registers['B']:02X}")
+            self.cc_flags['V'] = 1 if old_b == 0x80 else 0  # Overflow if $80 -> $7F
+            self._update_nz_flags(self.registers['B'])
+            self.registers['PC'] += 1
+            
+        elif opcode == 0x50:  # NEGB (Negate B)
+            old_b = self.registers['B']
+            self.registers['B'] = (256 - old_b) & 0xFF
+            self.debug_print(f"🔍 DEBUG: NEGB, B=${old_b:02X} -> ${self.registers['B']:02X}")
+            self.cc_flags['C'] = 1 if old_b != 0 else 0
+            self.cc_flags['V'] = 1 if old_b == 0x80 else 0
+            self._update_nz_flags(self.registers['B'])
+            self.registers['PC'] += 1
+            
+        elif opcode == 0x51:  # NEGB direct (Negate memory location direct addressing)
+            addr = self.memory[pc + 1]
+            old_value = self.memory[addr]
+            new_value = (256 - old_value) & 0xFF
+            self.debug_print(f"🔍 DEBUG: NEGB direct ${addr:02X}, mem=${old_value:02X} -> ${new_value:02X}")
+            self.memory[addr] = new_value
+            self.cc_flags['C'] = 1 if old_value != 0 else 0
+            self.cc_flags['V'] = 1 if old_value == 0x80 else 0
+            self._update_nz_flags(new_value)
+            self.registers['PC'] += 2
+            
+        elif opcode == 0x53:  # COMB (Complement B register)
+            old_b = self.registers['B']
+            self.registers['B'] = (~old_b) & 0xFF
+            self.debug_print(f"🔍 DEBUG: COMB, B=${old_b:02X} -> ${self.registers['B']:02X}")
+            self.cc_flags['C'] = 1  # COMB always sets carry
+            self.cc_flags['V'] = 0  # COMB always clears overflow
+            self._update_nz_flags(self.registers['B'])
             self.registers['PC'] += 1
             
         elif opcode == 0x1B:  # ABA (Add B to A)
@@ -678,6 +732,29 @@ class M6800Simulator:
             self._update_nz_flags(self.registers['B'])
             self.registers['PC'] += 2
             
+        # Subtraction Instructions
+        elif opcode == 0x90:  # SUBA direct
+            addr = self.memory[pc + 1]
+            value = self.memory[addr]
+            result = self.registers['A'] - value
+            self.debug_print(f"🔍 DEBUG: SUBA direct ${addr:02X}, A=${self.registers['A']:02X}, mem=${value:02X}, result=${result & 0xFF:02X}")
+            self._update_carry_flag(self.registers['A'] < value)
+            self.registers['A'] = result & 0xFF
+            self._update_nz_flags(self.registers['A'])
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xF2:  # SUBB extended
+            high = self.memory[pc + 1]
+            low = self.memory[pc + 2]
+            addr = (high << 8) | low
+            value = self.memory[addr]
+            result = self.registers['B'] - value
+            self.debug_print(f"🔍 DEBUG: SUBB extended ${addr:04X}, B=${self.registers['B']:02X}, mem=${value:02X}, result=${result & 0xFF:02X}")
+            self._update_carry_flag(self.registers['B'] < value)
+            self.registers['B'] = result & 0xFF
+            self._update_nz_flags(self.registers['B'])
+            self.registers['PC'] += 3
+            
         # ADDD (Add to Double accumulator) Instructions
         elif opcode == 0xC3:  # ADDD immediate
             high = self.memory[pc + 1]
@@ -754,6 +831,24 @@ class M6800Simulator:
             value = self.memory[pc + 1]
             result = self.registers['B'] - value
             self.debug_print(f"🔍 DEBUG: CMP B immediate ${value:02X}, B=${self.registers['B']:02X}, result=${result & 0xFF:02X}")
+            self._update_carry_flag(self.registers['B'] < value)
+            self._update_nz_flags(result & 0xFF)
+            self.registers['PC'] += 2
+            
+        elif opcode == 0x91:  # CMPA direct
+            addr = self.memory[pc + 1]
+            value = self.memory[addr]
+            result = self.registers['A'] - value
+            self.debug_print(f"🔍 DEBUG: CMPA direct ${addr:02X}, A=${self.registers['A']:02X}, mem=${value:02X}, result=${result & 0xFF:02X}")
+            self._update_carry_flag(self.registers['A'] < value)
+            self._update_nz_flags(result & 0xFF)
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xD1:  # CMPB direct
+            addr = self.memory[pc + 1]
+            value = self.memory[addr]
+            result = self.registers['B'] - value
+            self.debug_print(f"🔍 DEBUG: CMPB direct ${addr:02X}, B=${self.registers['B']:02X}, mem=${value:02X}, result=${result & 0xFF:02X}")
             self._update_carry_flag(self.registers['B'] < value)
             self._update_nz_flags(result & 0xFF)
             self.registers['PC'] += 2
@@ -983,13 +1078,13 @@ class M6800Simulator:
                 self._compare_16bit(self.registers['Y'], value)
                 self.registers['PC'] += 4
                 
-            elif next_opcode == 0xAC:  # CPY indexed
+            elif next_opcode == 0xAC:  # CPY indexed,Y
                 offset = self.memory[pc + 2]
-                addr = (self.registers['X'] + offset) & 0xFFFF
+                addr = (self.registers['Y'] + offset) & 0xFFFF
                 high = self.memory[addr]
                 low = self.memory[addr + 1]
                 value = (high << 8) | low
-                self.debug_print(f"🔍 DEBUG: CPY indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, Y=${self.registers['Y']:04X}, mem=${value:04X}")
+                self.debug_print(f"🔍 DEBUG: CPY indexed,Y, Y=${self.registers['Y']:04X}, offset=${offset:02X}, addr=${addr:04X}, mem=${value:04X}")
                 self._compare_16bit(self.registers['Y'], value)
                 self.registers['PC'] += 3
                 

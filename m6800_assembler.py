@@ -137,12 +137,12 @@ class M6800Assembler:
             'STY': {'DIR': 0x18DF, 'EXT': 0x18FF, 'IDX': 0x18EF},  # Store Y register
             'LDY': {'IMM': 0x18CE, 'DIR': 0x18DE, 'EXT': 0x18FE, 'IDX': 0x18EE},  # Load Y register
             'CPD': {'IMM': 0x1A83, 'DIR': 0x1A93, 'EXT': 0x1AB3, 'IDX': 0x1AA3},  # Compare D
-            'CPY': {'IMM': 0x18AC, 'DIR': 0x18BC, 'EXT': 0x18BC, 'IDX': 0x18AC},  # Compare Y
+            'CPY': {'IMM': 0x188C, 'DIR': 0x189C, 'EXT': 0x18BC, 'IDX': 0x18AC},  # Compare Y
             'ABY': {'INH': 0x18E5},    # Add B to Y
             'PSHY': {'INH': 0x18DC},   # Push Y to stack  
             'PULY': {'INH': 0x18D8},   # Pull Y from stack
             'XGDX': {'INH': 0x8F},     # Exchange D and X
-            'XGDY': {'INH': 0x18CF},   # Exchange D and Y
+            'XGDY': {'INH': 0x188F},   # Exchange D and Y
             'TSY': {'INH': 0x18F0},    # Transfer SP to Y
             'TYS': {'INH': 0x18F5},    # Transfer Y to SP
         }
