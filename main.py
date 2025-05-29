@@ -301,15 +301,37 @@ class AssemblerGUI:
         reg_frame = ttk.LabelFrame(top_frame, text="Registers", padding=5)
         reg_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 5))
         
-        # Register display
-        self.reg_vars = {}
-        registers = ['A', 'B', 'X', 'SP', 'PC', 'CC']
+        # Register labels
+        tk.Label(reg_frame, text="Registers:", font=('Consolas', 10, 'bold')).grid(row=0, column=0, columnspan=2, sticky='w')
+        tk.Label(reg_frame, text="A:", font=('Consolas', 9)).grid(row=1, column=0, sticky='w')
+        tk.Label(reg_frame, text="B:", font=('Consolas', 9)).grid(row=2, column=0, sticky='w')
+        tk.Label(reg_frame, text="X:", font=('Consolas', 9)).grid(row=3, column=0, sticky='w')
+        tk.Label(reg_frame, text="Y:", font=('Consolas', 9)).grid(row=4, column=0, sticky='w')
+        tk.Label(reg_frame, text="SP:", font=('Consolas', 9)).grid(row=5, column=0, sticky='w')
+        tk.Label(reg_frame, text="PC:", font=('Consolas', 9)).grid(row=6, column=0, sticky='w')
+        tk.Label(reg_frame, text="CC:", font=('Consolas', 9)).grid(row=7, column=0, sticky='w')
         
-        for i, reg in enumerate(registers):
-            ttk.Label(reg_frame, text=f"{reg}:").grid(row=i, column=0, sticky='w', padx=(0, 5))
-            var = tk.StringVar(value="00" if reg in ['A', 'B', 'CC'] else "0000")
-            self.reg_vars[reg] = var
-            ttk.Label(reg_frame, textvariable=var, font=('Consolas', 10)).grid(row=i, column=1, sticky='w')
+        # Register value displays
+        self.reg_a_label = tk.Label(reg_frame, text="00", font=('Consolas', 9), bg='white', relief='sunken', width=8)
+        self.reg_a_label.grid(row=1, column=1, sticky='w', padx=(5,0))
+        
+        self.reg_b_label = tk.Label(reg_frame, text="00", font=('Consolas', 9), bg='white', relief='sunken', width=8)
+        self.reg_b_label.grid(row=2, column=1, sticky='w', padx=(5,0))
+        
+        self.reg_x_label = tk.Label(reg_frame, text="0000", font=('Consolas', 9), bg='white', relief='sunken', width=8)
+        self.reg_x_label.grid(row=3, column=1, sticky='w', padx=(5,0))
+        
+        self.reg_y_label = tk.Label(reg_frame, text="0000", font=('Consolas', 9), bg='white', relief='sunken', width=8)
+        self.reg_y_label.grid(row=4, column=1, sticky='w', padx=(5,0))
+        
+        self.reg_sp_label = tk.Label(reg_frame, text="01FF", font=('Consolas', 9), bg='white', relief='sunken', width=8)
+        self.reg_sp_label.grid(row=5, column=1, sticky='w', padx=(5,0))
+        
+        self.reg_pc_label = tk.Label(reg_frame, text="0000", font=('Consolas', 9), bg='white', relief='sunken', width=8)
+        self.reg_pc_label.grid(row=6, column=1, sticky='w', padx=(5,0))
+        
+        self.reg_cc_label = tk.Label(reg_frame, text="00", font=('Consolas', 9), bg='white', relief='sunken', width=8)
+        self.reg_cc_label.grid(row=7, column=1, sticky='w', padx=(5,0))
         
         # Memory frame
         mem_frame = ttk.LabelFrame(top_frame, text="Memory View", padding=5)
@@ -661,16 +683,8 @@ FINISH: NOP              ; No operation
         """Update the simulator display with current state."""
         self.debug_print("📺 DEBUG: update_simulator_display() called")
         try:
-            # Update registers
-            state = self.simulator.get_state()
-            self.debug_print(f"📺 DEBUG: Got simulator state - PC: ${state['registers']['PC']:04X}, A: ${state['registers']['A']:02X}")
-            
-            for reg, value in state['registers'].items():
-                if reg in self.reg_vars:
-                    if reg in ['A', 'B', 'CC']:
-                        self.reg_vars[reg].set(f"{value:02X}")
-                    else:
-                        self.reg_vars[reg].set(f"{value:04X}")
+            # Update registers using the existing register display method
+            self.update_register_display()
             
             # Update memory view
             self.memory_text.config(state='normal')
@@ -769,6 +783,35 @@ Author: [Student Name]
                 messagebox.showinfo("Logs Folder", "Logs folder doesn't exist yet. Run some operations to generate logs.")
         except Exception as e:
             messagebox.showerror("Error", f"Could not open logs folder: {str(e)}")
+
+    def update_register_display(self):
+        """Update the register display with current simulator values."""
+        self.debug_print("🖥️ DEBUG: update_register_display() called")
+        
+        try:
+            registers = self.simulator.registers
+            
+            # Update register labels
+            self.reg_a_label.config(text=f"{registers['A']:02X}")
+            self.reg_b_label.config(text=f"{registers['B']:02X}")
+            self.reg_x_label.config(text=f"{registers['X']:04X}")
+            self.reg_y_label.config(text=f"{registers['Y']:04X}")
+            self.reg_sp_label.config(text=f"{registers['SP']:04X}")
+            self.reg_pc_label.config(text=f"{registers['PC']:04X}")
+            self.reg_cc_label.config(text=f"{registers['CC']:02X}")
+            
+            self.debug_print(f"🖥️ DEBUG: Registers updated - A:{registers['A']:02X} B:{registers['B']:02X} X:{registers['X']:04X} Y:{registers['Y']:04X} SP:{registers['SP']:04X} PC:{registers['PC']:04X} CC:{registers['CC']:02X}")
+            
+        except Exception as e:
+            self.debug_print(f"❌ DEBUG: Error updating register display: {e}")
+            # Set default values in case of error
+            self.reg_a_label.config(text="--")
+            self.reg_b_label.config(text="--")
+            self.reg_x_label.config(text="----")
+            self.reg_y_label.config(text="----")
+            self.reg_sp_label.config(text="----")
+            self.reg_pc_label.config(text="----")
+            self.reg_cc_label.config(text="--")
 
 def main():
     """Main application entry point."""

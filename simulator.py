@@ -46,10 +46,6 @@ class M6800Simulator:
         # Add handler to logger
         self.logger.addHandler(file_handler)
         
-        # Log startup
-        self.debug_print("🚀 M6800 Simulator Debug Log Started")
-        self.debug_print(f"📁 Log file: {self.log_filename}")
-        
     def debug_print(self, message: str):
         """Print debug message and log to file."""
         print(message)  # Console output
@@ -68,7 +64,8 @@ class M6800Simulator:
         self.registers = {
             'A': 0x00,      # Accumulator A
             'B': 0x00,      # Accumulator B
-            'X': 0x0000,    # Index Register
+            'X': 0x0000,    # Index Register X
+            'Y': 0x0000,    # Index Register Y (M6801/M6811)
             'SP': 0x01FF,   # Stack Pointer (starts at top of page 1)
             'PC': 0x0000,   # Program Counter
             'CC': 0x00      # Condition Code Register
@@ -201,341 +198,65 @@ class M6800Simulator:
         self.debug_print(f"🚀 DEBUG: run() called, max_instructions: {max_instructions}")
         executed = 0
         
-        while executed < max_instructions and not self.execution_halted:
+        while executed < max_instructions:
             self.debug_print(f"🚀 DEBUG: Run loop iteration {executed + 1}")
+            
             if not self.step():
-                self.debug_print(f"🚀 DEBUG: Step failed, breaking run loop")
                 break
+                
             executed += 1
             
+            # Safety check for infinite loops
+            if executed >= max_instructions:
+                self.debug_print(f"🚀 DEBUG: Max instructions ({max_instructions}) reached")
+                break
+        
         self.debug_print(f"🚀 DEBUG: Run completed, executed {executed} instructions")
-        return executed
-    
+        return executed 
+
     def _execute_instruction(self, opcode: int):
-        """Execute a single instruction based on its opcode."""
+        """Execute a single instruction based on opcode."""
         pc = self.registers['PC']
         self.debug_print(f"🔍 DEBUG: Executing opcode ${opcode:02X} at PC=${pc:04X}")
         
-        # Simple instruction decoder - basic implementation
-        if opcode == 0x00:  # BRK (Break/Software Interrupt)
+        if opcode == 0x00:  # BRK (Break/Halt)
             self.debug_print("🔍 DEBUG: BRK - halting execution")
             self.execution_halted = True
             
         elif opcode == 0x01:  # NOP
-            self.debug_print("🔍 DEBUG: NOP instruction")
+            self.debug_print("🔍 DEBUG: NOP")
             self.registers['PC'] += 1
             
-        elif opcode == 0x86:  # LDA immediate
-            value = self.memory[pc + 1]
-            self.debug_print(f"🔍 DEBUG: LDA immediate ${value:02X}")
-            self.registers['A'] = value
-            self._update_nz_flags(value)
-            self.registers['PC'] += 2
+        elif opcode == 0x08:  # INX (Increment X)
+            self.registers['X'] = (self.registers['X'] + 1) & 0xFFFF
+            self.debug_print(f"🔍 DEBUG: INX, X=${self.registers['X']:04X}")
+            self._update_nz_flags(self.registers['X'])
+            self.registers['PC'] += 1
             
-        elif opcode == 0xC6:  # LDB immediate
-            value = self.memory[pc + 1]
-            self.debug_print(f"🔍 DEBUG: LDB immediate ${value:02X}")
-            self.registers['B'] = value
-            self._update_nz_flags(value)
-            self.registers['PC'] += 2
+        elif opcode == 0x09:  # DEX (Decrement X)
+            self.registers['X'] = (self.registers['X'] - 1) & 0xFFFF
+            self.debug_print(f"🔍 DEBUG: DEX, X=${self.registers['X']:04X}")
+            self._update_nz_flags(self.registers['X'])
+            self.registers['PC'] += 1
             
-        elif opcode == 0xCE:  # LDX immediate
-            high = self.memory[pc + 1]
-            low = self.memory[pc + 2]
-            value = (high << 8) | low
-            self.debug_print(f"🔍 DEBUG: LDX immediate ${value:04X}")
-            self.registers['X'] = value
-            self._update_nz_flags(value)
-            self.registers['PC'] += 3
+        elif opcode == 0x0A:  # CLV (Clear Overflow flag)
+            self.debug_print("🔍 DEBUG: CLV - clearing overflow flag")
+            self.cc_flags['V'] = 0
+            self._pack_cc_register()
+            self.registers['PC'] += 1
             
-        elif opcode == 0x97:  # STA direct
-            addr = self.memory[pc + 1]
-            self.debug_print(f"🔍 DEBUG: STA direct ${addr:02X}, A=${self.registers['A']:02X}")
-            self.memory[addr] = self.registers['A']
-            self.registers['PC'] += 2
-            
-        elif opcode == 0xB7:  # STA extended
-            high = self.memory[pc + 1]
-            low = self.memory[pc + 2]
-            addr = (high << 8) | low
-            self.debug_print(f"🔍 DEBUG: STA extended ${addr:04X}, A=${self.registers['A']:02X}")
-            self.memory[addr] = self.registers['A']
-            self.registers['PC'] += 3
-            
-        elif opcode == 0xD7:  # STB direct
-            addr = self.memory[pc + 1]
-            self.debug_print(f"🔍 DEBUG: STB direct ${addr:02X}, B=${self.registers['B']:02X}")
-            self.memory[addr] = self.registers['B']
-            self.registers['PC'] += 2
-            
-        elif opcode == 0xF7:  # STB extended
-            high = self.memory[pc + 1]
-            low = self.memory[pc + 2]
-            addr = (high << 8) | low
-            self.debug_print(f"🔍 DEBUG: STB extended ${addr:04X}, B=${self.registers['B']:02X}")
-            self.memory[addr] = self.registers['B']
-            self.registers['PC'] += 3
-            
-        elif opcode == 0x81:  # CMP A immediate
-            value = self.memory[pc + 1]
-            result = self.registers['A'] - value
-            self.debug_print(f"🔍 DEBUG: CMP A immediate ${value:02X}, A=${self.registers['A']:02X}, result=${result:02X}")
-            self._update_nz_flags(result & 0xFF)
-            self._update_carry_flag(result < 0)
-            self.registers['PC'] += 2
-            
-        elif opcode == 0x27:  # BEQ relative
-            offset = self.memory[pc + 1]
-            if offset > 127:
-                offset -= 256  # Convert to signed
-            self.debug_print(f"🔍 DEBUG: BEQ relative offset={offset}, Z flag={self.cc_flags['Z']}")
-            if self.cc_flags['Z']:
-                new_pc = (self.registers['PC'] + 2 + offset) & 0xFFFF
-                self.debug_print(f"🔍 DEBUG: BEQ taking branch to ${new_pc:04X}")
-                self.registers['PC'] = new_pc
-            else:
-                self.debug_print("🔍 DEBUG: BEQ not taking branch")
-                self.registers['PC'] += 2
-                
-        elif opcode == 0x26:  # BNE relative
-            offset = self.memory[pc + 1]
-            if offset > 127:
-                offset -= 256  # Convert to signed
-            self.debug_print(f"🔍 DEBUG: BNE relative offset={offset}, Z flag={self.cc_flags['Z']}")
-            if not self.cc_flags['Z']:
-                new_pc = (self.registers['PC'] + 2 + offset) & 0xFFFF
-                self.debug_print(f"🔍 DEBUG: BNE taking branch to ${new_pc:04X}")
-                self.registers['PC'] = new_pc
-            else:
-                self.debug_print("🔍 DEBUG: BNE not taking branch")
-                self.registers['PC'] += 2
-                
-        elif opcode == 0x20:  # BRA relative
-            offset = self.memory[pc + 1]
-            if offset > 127:
-                offset -= 256  # Convert to signed
-            new_pc = (self.registers['PC'] + 2 + offset) & 0xFFFF
-            self.debug_print(f"🔍 DEBUG: BRA relative to ${new_pc:04X}")
-            self.registers['PC'] = new_pc
-            
-        elif opcode == 0x7E:  # JMP extended
-            high = self.memory[pc + 1]
-            low = self.memory[pc + 2]
-            addr = (high << 8) | low
-            self.debug_print(f"🔍 DEBUG: JMP extended to ${addr:04X}")
-            self.registers['PC'] = addr
-            
-        elif opcode == 0x8B:  # ADD A immediate
-            value = self.memory[pc + 1]
-            result = self.registers['A'] + value
-            self.debug_print(f"🔍 DEBUG: ADD A immediate ${value:02X}, A=${self.registers['A']:02X}")
+        elif opcode == 0x1B:  # ABA (Add B to A)
+            result = self.registers['A'] + self.registers['B']
+            self.debug_print(f"🔍 DEBUG: ABA, A=${self.registers['A']:02X}, B=${self.registers['B']:02X}, result=${result:02X}")
             self._update_carry_flag(result > 255)
             self.registers['A'] = result & 0xFF
             self._update_nz_flags(self.registers['A'])
-            self.registers['PC'] += 2
-            
-        elif opcode == 0x16:  # TAB
-            self.debug_print(f"🔍 DEBUG: TAB, A=${self.registers['A']:02X}")
-            self.registers['B'] = self.registers['A']
-            self._update_nz_flags(self.registers['B'])
             self.registers['PC'] += 1
-            
-        elif opcode == 0x17:  # TBA
-            self.debug_print(f"🔍 DEBUG: TBA, B=${self.registers['B']:02X}")
-            self.registers['A'] = self.registers['B']
-            self._update_nz_flags(self.registers['A'])
-            self.registers['PC'] += 1
-            
-        elif opcode == 0x4C:  # INC A
-            old_a = self.registers['A']
-            self.registers['A'] = (self.registers['A'] + 1) & 0xFF
-            self.debug_print(f"🔍 DEBUG: INC A, ${old_a:02X} -> ${self.registers['A']:02X}")
-            self._update_nz_flags(self.registers['A'])
-            self.registers['PC'] += 1
-            
-        elif opcode == 0x5C:  # INC B
-            old_b = self.registers['B']
-            self.registers['B'] = (self.registers['B'] + 1) & 0xFF
-            self.debug_print(f"🔍 DEBUG: INC B, ${old_b:02X} -> ${self.registers['B']:02X}")
-            self._update_nz_flags(self.registers['B'])
-            self.registers['PC'] += 1
-            
-        elif opcode == 0x4A:  # DEC A
-            old_a = self.registers['A']
-            self.registers['A'] = (self.registers['A'] - 1) & 0xFF
-            self.debug_print(f"🔍 DEBUG: DEC A, ${old_a:02X} -> ${self.registers['A']:02X}")
-            self._update_nz_flags(self.registers['A'])
-            self.registers['PC'] += 1
-            
-        elif opcode == 0x5A:  # DEC B
-            old_b = self.registers['B']
-            self.registers['B'] = (self.registers['B'] - 1) & 0xFF
-            self.debug_print(f"🔍 DEBUG: DEC B, ${old_b:02X} -> ${self.registers['B']:02X}")
-            self._update_nz_flags(self.registers['B'])
-            self.registers['PC'] += 1
-            
-        elif opcode == 0x39:  # RTS
-            # Pop return address from stack
-            sp = self.registers['SP']
-            low = self.memory[sp + 1]
-            high = self.memory[sp + 2]
-            addr = (high << 8) | low
-            self.debug_print(f"🔍 DEBUG: RTS, returning to ${addr:04X}")
-            self.registers['PC'] = addr
-            self.registers['SP'] = (sp + 2) & 0xFFFF
-            
-        elif opcode == 0x3F:  # SWI (Software Interrupt)
-            self.debug_print("🔍 DEBUG: SWI - halting execution")
-            self.execution_halted = True
-            
-        elif opcode == 0xA6:  # LDA indexed (0,X)
-            offset = self.memory[pc + 1]
-            addr = (self.registers['X'] + offset) & 0xFFFF
-            value = self.memory[addr]
-            self.debug_print(f"🔍 DEBUG: LDA indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, value=${value:02X}")
-            self.registers['A'] = value
-            self._update_nz_flags(value)
-            self.registers['PC'] += 2
-            
-        elif opcode == 0xE6:  # LDB indexed (0,X)
-            offset = self.memory[pc + 1]
-            addr = (self.registers['X'] + offset) & 0xFFFF
-            value = self.memory[addr]
-            self.debug_print(f"🔍 DEBUG: LDB indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, value=${value:02X}")
-            self.registers['B'] = value
-            self._update_nz_flags(value)
-            self.registers['PC'] += 2
-            
-        elif opcode == 0x96:  # LDA direct
-            addr = self.memory[pc + 1]
-            value = self.memory[addr]
-            self.debug_print(f"🔍 DEBUG: LDA direct ${addr:02X}, value=${value:02X}")
-            self.registers['A'] = value
-            self._update_nz_flags(value)
-            self.registers['PC'] += 2
-            
-        elif opcode == 0xD6:  # LDB direct
-            addr = self.memory[pc + 1]
-            value = self.memory[addr]
-            self.debug_print(f"🔍 DEBUG: LDB direct ${addr:02X}, value=${value:02X}")
-            self.registers['B'] = value
-            self._update_nz_flags(value)
-            self.registers['PC'] += 2
-            
-        elif opcode == 0xB6:  # LDA extended
-            high = self.memory[pc + 1]
-            low = self.memory[pc + 2]
-            addr = (high << 8) | low
-            value = self.memory[addr]
-            self.debug_print(f"🔍 DEBUG: LDA extended ${addr:04X}, value=${value:02X}")
-            self.registers['A'] = value
-            self._update_nz_flags(value)
-            self.registers['PC'] += 3
-            
-        elif opcode == 0xF6:  # LDB extended
-            high = self.memory[pc + 1]
-            low = self.memory[pc + 2]
-            addr = (high << 8) | low
-            value = self.memory[addr]
-            self.debug_print(f"🔍 DEBUG: LDB extended ${addr:04X}, value=${value:02X}")
-            self.registers['B'] = value
-            self._update_nz_flags(value)
-            self.registers['PC'] += 3
-            
-        elif opcode == 0x91:  # CMP A direct
-            addr = self.memory[pc + 1]
-            value = self.memory[addr]
-            result = self.registers['A'] - value
-            self.debug_print(f"🔍 DEBUG: CMP A direct ${addr:02X}, A=${self.registers['A']:02X}, mem=${value:02X}")
-            self._update_nz_flags(result & 0xFF)
-            self._update_carry_flag(result < 0)
-            self.registers['PC'] += 2
-            
-        elif opcode == 0xB1:  # CMP A extended
-            high = self.memory[pc + 1]
-            low = self.memory[pc + 2]
-            addr = (high << 8) | low
-            value = self.memory[addr]
-            result = self.registers['A'] - value
-            self.debug_print(f"🔍 DEBUG: CMP A extended ${addr:04X}, A=${self.registers['A']:02X}, mem=${value:02X}")
-            self._update_nz_flags(result & 0xFF)
-            self._update_carry_flag(result < 0)
-            self.registers['PC'] += 3
-            
-        elif opcode == 0xA1:  # CMP A indexed
-            offset = self.memory[pc + 1]
-            addr = (self.registers['X'] + offset) & 0xFFFF
-            value = self.memory[addr]
-            result = self.registers['A'] - value
-            self.debug_print(f"🔍 DEBUG: CMP A indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, value=${value:02X}")
-            self._update_nz_flags(result & 0xFF)
-            self._update_carry_flag(result < 0)
-            self.registers['PC'] += 2
             
         elif opcode == 0x1C:  # ABX (Add B to X)
             result = self.registers['X'] + self.registers['B']
             self.debug_print(f"🔍 DEBUG: ABX, X=${self.registers['X']:04X}, B=${self.registers['B']:02X}, result=${result:04X}")
             self.registers['X'] = result & 0xFFFF
-            self.registers['PC'] += 1
-            
-        elif opcode == 0xCC:  # LDD immediate (Load Double accumulator)
-            high = self.memory[pc + 1]
-            low = self.memory[pc + 2]
-            value = (high << 8) | low
-            self.debug_print(f"🔍 DEBUG: LDD immediate ${value:04X}")
-            self.registers['A'] = (value >> 8) & 0xFF
-            self.registers['B'] = value & 0xFF
-            self._update_nz_flags(value)
-            self.registers['PC'] += 3
-            
-        elif opcode == 0xDC:  # LDD direct
-            addr = self.memory[pc + 1]
-            high = self.memory[addr]
-            low = self.memory[addr + 1]
-            value = (high << 8) | low
-            self.debug_print(f"🔍 DEBUG: LDD direct ${addr:02X}, value=${value:04X}")
-            self.registers['A'] = high
-            self.registers['B'] = low
-            self._update_nz_flags(value)
-            self.registers['PC'] += 2
-            
-        elif opcode == 0xFC:  # LDD extended
-            high_addr = self.memory[pc + 1]
-            low_addr = self.memory[pc + 2]
-            addr = (high_addr << 8) | low_addr
-            high = self.memory[addr]
-            low = self.memory[addr + 1]
-            value = (high << 8) | low
-            self.debug_print(f"🔍 DEBUG: LDD extended ${addr:04X}, value=${value:04X}")
-            self.registers['A'] = high
-            self.registers['B'] = low
-            self._update_nz_flags(value)
-            self.registers['PC'] += 3
-            
-        elif opcode == 0xDD:  # STD direct (Store Double accumulator)
-            addr = self.memory[pc + 1]
-            value = (self.registers['A'] << 8) | self.registers['B']
-            self.debug_print(f"🔍 DEBUG: STD direct ${addr:02X}, D=${value:04X}")
-            self.memory[addr] = self.registers['A']
-            self.memory[addr + 1] = self.registers['B']
-            self.registers['PC'] += 2
-            
-        elif opcode == 0xFD:  # STD extended
-            high_addr = self.memory[pc + 1]
-            low_addr = self.memory[pc + 2]
-            addr = (high_addr << 8) | low_addr
-            value = (self.registers['A'] << 8) | self.registers['B']
-            self.debug_print(f"🔍 DEBUG: STD extended ${addr:04X}, D=${value:04X}")
-            self.memory[addr] = self.registers['A']
-            self.memory[addr + 1] = self.registers['B']
-            self.registers['PC'] += 3
-            
-        elif opcode == 0x1B:  # ABA (Add B to A)
-            result = self.registers['A'] + self.registers['B']
-            self.debug_print(f"🔍 DEBUG: ABA, A=${self.registers['A']:02X}, B=${self.registers['B']:02X}")
-            self._update_carry_flag(result > 255)
-            self.registers['A'] = result & 0xFF
-            self._update_nz_flags(self.registers['A'])
             self.registers['PC'] += 1
             
         elif opcode == 0x19:  # DAA (Decimal Adjust A)
@@ -551,69 +272,848 @@ class M6800Simulator:
             self._update_nz_flags(self.registers['A'])
             self.registers['PC'] += 1
             
-        elif opcode == 0x18:  # XGDX (Exchange D with X) - M6811 instruction
-            self.debug_print(f"🔍 DEBUG: XGDX, D=${(self.registers['A'] << 8) | self.registers['B']:04X}, X=${self.registers['X']:04X}")
-            temp_d = (self.registers['A'] << 8) | self.registers['B']
-            temp_x = self.registers['X']
-            self.registers['A'] = (temp_x >> 8) & 0xFF
-            self.registers['B'] = temp_x & 0xFF
-            self.registers['X'] = temp_d
-            self.registers['PC'] += 1
+        elif opcode == 0x20:  # BRA (Branch Always)
+            offset = self.memory[pc + 1]
+            if offset & 0x80:  # Check if negative (two's complement)
+                offset = offset - 256
+            target = (pc + 2 + offset) & 0xFFFF
+            self.debug_print(f"🔍 DEBUG: BRA relative offset={offset}, target=${target:04X}")
+            self.registers['PC'] = target
             
-        elif opcode == 0x3D:  # MUL (Multiply A × B → D)
-            result = self.registers['A'] * self.registers['B']
-            self.debug_print(f"🔍 DEBUG: MUL, A=${self.registers['A']:02X} × B=${self.registers['B']:02X} = ${result:04X}")
-            self.registers['A'] = (result >> 8) & 0xFF
-            self.registers['B'] = result & 0xFF
-            self._update_carry_flag((result & 0x80) != 0)  # C = bit 7 of result
-            self.registers['PC'] += 1
-            
-        elif opcode == 0x30:  # TSX (Transfer Stack Pointer to Index Register)
+        elif opcode == 0x24:  # BCC (Branch if Carry Clear)
+            offset = self.memory[pc + 1]
+            if offset & 0x80:
+                offset = offset - 256
+            if not self.cc_flags['C']:
+                target = (pc + 2 + offset) & 0xFFFF
+                self.debug_print(f"🔍 DEBUG: BCC taking branch to ${target:04X}")
+                self.registers['PC'] = target
+            else:
+                self.debug_print("🔍 DEBUG: BCC not taking branch")
+                self.registers['PC'] += 2
+                
+        elif opcode == 0x25:  # BCS (Branch if Carry Set)
+            offset = self.memory[pc + 1]
+            if offset & 0x80:
+                offset = offset - 256
+            if self.cc_flags['C']:
+                target = (pc + 2 + offset) & 0xFFFF
+                self.debug_print(f"🔍 DEBUG: BCS taking branch to ${target:04X}")
+                self.registers['PC'] = target
+            else:
+                self.debug_print("🔍 DEBUG: BCS not taking branch")
+                self.registers['PC'] += 2
+                
+        elif opcode == 0x26:  # BNE (Branch if Not Equal)
+            offset = self.memory[pc + 1]
+            if offset & 0x80:
+                offset = offset - 256
+            if not self.cc_flags['Z']:
+                target = (pc + 2 + offset) & 0xFFFF
+                self.debug_print(f"🔍 DEBUG: BNE taking branch to ${target:04X}")
+                self.registers['PC'] = target
+            else:
+                self.debug_print("🔍 DEBUG: BNE not taking branch")
+                self.registers['PC'] += 2
+                
+        elif opcode == 0x27:  # BEQ (Branch if Equal)
+            offset = self.memory[pc + 1]
+            if offset & 0x80:
+                offset = offset - 256
+            self.debug_print(f"🔍 DEBUG: BEQ relative offset={offset}, Z flag={self.cc_flags['Z']}")
+            if self.cc_flags['Z']:
+                target = (pc + 2 + offset) & 0xFFFF
+                self.debug_print(f"🔍 DEBUG: BEQ taking branch to ${target:04X}")
+                self.registers['PC'] = target
+            else:
+                self.debug_print("🔍 DEBUG: BEQ not taking branch")
+                self.registers['PC'] += 2
+                
+        elif opcode == 0x30:  # TSX (Transfer Stack Pointer to X)
             self.debug_print(f"🔍 DEBUG: TSX, SP=${self.registers['SP']:04X}")
-            self.registers['X'] = self.registers['SP'] + 1  # M6800 TSX adds 1 to SP
-            self._update_nz_flags(self.registers['X'])
+            self.registers['X'] = (self.registers['SP'] + 1) & 0xFFFF  # TSX adds 1 to SP
             self.registers['PC'] += 1
             
-        elif opcode == 0xD1:  # CMP B direct
-            addr = self.memory[pc + 1]
-            value = self.memory[addr]
-            result = self.registers['B'] - value
-            self.debug_print(f"🔍 DEBUG: CMP B direct ${addr:02X}, B=${self.registers['B']:02X}, mem=${value:02X}")
-            self._update_nz_flags(result & 0xFF)
-            self._update_carry_flag(result < 0)
+        elif opcode == 0x35:  # TXS (Transfer X to Stack Pointer)
+            self.debug_print(f"🔍 DEBUG: TXS, X=${self.registers['X']:04X}")
+            self.registers['SP'] = (self.registers['X'] - 1) & 0xFFFF  # TXS subtracts 1 from X
+            self.registers['PC'] += 1
+            
+        elif opcode == 0x36:  # PSHA (Push A to stack)
+            self.debug_print(f"🔍 DEBUG: PSHA, A=${self.registers['A']:02X}, SP=${self.registers['SP']:04X}")
+            self.memory[self.registers['SP']] = self.registers['A']
+            self.registers['SP'] = (self.registers['SP'] - 1) & 0xFFFF
+            self.registers['PC'] += 1
+            
+        elif opcode == 0x37:  # PSHB (Push B to stack)
+            self.debug_print(f"🔍 DEBUG: PSHB, B=${self.registers['B']:02X}, SP=${self.registers['SP']:04X}")
+            self.memory[self.registers['SP']] = self.registers['B']
+            self.registers['SP'] = (self.registers['SP'] - 1) & 0xFFFF
+            self.registers['PC'] += 1
+            
+        elif opcode == 0x32:  # PULA (Pull A from stack)
+            self.registers['SP'] = (self.registers['SP'] + 1) & 0xFFFF
+            self.registers['A'] = self.memory[self.registers['SP']]
+            self.debug_print(f"🔍 DEBUG: PULA, A=${self.registers['A']:02X}, SP=${self.registers['SP']:04X}")
+            self.registers['PC'] += 1
+            
+        elif opcode == 0x33:  # PULB (Pull B from stack)
+            self.registers['SP'] = (self.registers['SP'] + 1) & 0xFFFF
+            self.registers['B'] = self.memory[self.registers['SP']]
+            self.debug_print(f"🔍 DEBUG: PULB, B=${self.registers['B']:02X}, SP=${self.registers['SP']:04X}")
+            self.registers['PC'] += 1
+            
+        elif opcode == 0x3C:  # PSHX (Push X register to stack)
+            self.debug_print(f"🔍 DEBUG: PSHX, X=${self.registers['X']:04X}, SP=${self.registers['SP']:04X}")
+            self.memory[self.registers['SP']] = self.registers['X'] & 0xFF
+            self.registers['SP'] = (self.registers['SP'] - 1) & 0xFFFF
+            self.memory[self.registers['SP']] = (self.registers['X'] >> 8) & 0xFF
+            self.registers['SP'] = (self.registers['SP'] - 1) & 0xFFFF
+            self.registers['PC'] += 1
+            
+        elif opcode == 0x38:  # PULX (Pull X register from stack)
+            self.debug_print(f"🔍 DEBUG: PULX, SP=${self.registers['SP']:04X}")
+            self.registers['SP'] = (self.registers['SP'] + 1) & 0xFFFF
+            high = self.memory[self.registers['SP']]
+            self.registers['SP'] = (self.registers['SP'] + 1) & 0xFFFF
+            low = self.memory[self.registers['SP']]
+            self.registers['X'] = (high << 8) | low
+            self.debug_print(f"🔍 DEBUG: PULX result, X=${self.registers['X']:04X}")
+            self.registers['PC'] += 1
+            
+        elif opcode == 0x39:  # RTS (Return from Subroutine)
+            # Pop return address from stack
+            sp = self.registers['SP']
+            low = self.memory[sp + 1]
+            high = self.memory[sp + 2]
+            addr = (high << 8) | low
+            self.debug_print(f"🔍 DEBUG: RTS, returning to ${addr:04X}")
+            self.registers['PC'] = addr
+            self.registers['SP'] = (sp + 2) & 0xFFFF
+            
+        elif opcode == 0x3D:  # MUL (Multiply A by B)
+            result = self.registers['A'] * self.registers['B']
+            self.debug_print(f"🔍 DEBUG: MUL, A=${self.registers['A']:02X}, B=${self.registers['B']:02X}, result=${result:04X}")
+            self.registers['A'] = (result >> 8) & 0xFF  # High byte to A
+            self.registers['B'] = result & 0xFF          # Low byte to B
+            self._update_carry_flag(self.registers['B'] & 0x80)  # Set C if bit 7 of low byte is set
+            self.registers['PC'] += 1
+            
+        elif opcode == 0x3E:  # WAI (Wait for Interrupt)
+            self.debug_print("🔍 DEBUG: WAI - halting execution (wait for interrupt)")
+            self.execution_halted = True
+            
+        # Load/Store Instructions
+        elif opcode == 0x86:  # LDA immediate
+            value = self.memory[pc + 1]
+            self.debug_print(f"🔍 DEBUG: LDA immediate ${value:02X}")
+            self.registers['A'] = value
+            self._update_nz_flags(value)
             self.registers['PC'] += 2
             
-        else:
-            # Unknown instruction - halt execution
-            self.debug_print(f"❌ DEBUG: Unknown instruction: ${opcode:02X} at PC=${pc:04X}")
+        elif opcode == 0x96:  # LDA direct
+            addr = self.memory[pc + 1]
+            value = self.memory[addr]
+            self.debug_print(f"🔍 DEBUG: LDA direct ${addr:02X}, value=${value:02X}")
+            self.registers['A'] = value
+            self._update_nz_flags(value)
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xB6:  # LDA extended
+            high = self.memory[pc + 1]
+            low = self.memory[pc + 2]
+            addr = (high << 8) | low
+            value = self.memory[addr]
+            self.debug_print(f"🔍 DEBUG: LDA extended ${addr:04X}, value=${value:02X}")
+            self.registers['A'] = value
+            self._update_nz_flags(value)
+            self.registers['PC'] += 3
+            
+        elif opcode == 0xA6:  # LDA indexed
+            offset = self.memory[pc + 1]
+            addr = (self.registers['X'] + offset) & 0xFFFF
+            value = self.memory[addr]
+            self.debug_print(f"🔍 DEBUG: LDA indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, value=${value:02X}")
+            self.registers['A'] = value
+            self._update_nz_flags(value)
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xC6:  # LDB immediate
+            value = self.memory[pc + 1]
+            self.debug_print(f"🔍 DEBUG: LDB immediate ${value:02X}")
+            self.registers['B'] = value
+            self._update_nz_flags(value)
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xD6:  # LDB direct
+            addr = self.memory[pc + 1]
+            value = self.memory[addr]
+            self.debug_print(f"🔍 DEBUG: LDB direct ${addr:02X}, value=${value:02X}")
+            self.registers['B'] = value
+            self._update_nz_flags(value)
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xF6:  # LDB extended
+            high = self.memory[pc + 1]
+            low = self.memory[pc + 2]
+            addr = (high << 8) | low
+            value = self.memory[addr]
+            self.debug_print(f"🔍 DEBUG: LDB extended ${addr:04X}, value=${value:02X}")
+            self.registers['B'] = value
+            self._update_nz_flags(value)
+            self.registers['PC'] += 3
+            
+        elif opcode == 0xE6:  # LDB indexed
+            offset = self.memory[pc + 1]
+            addr = (self.registers['X'] + offset) & 0xFFFF
+            value = self.memory[addr]
+            self.debug_print(f"🔍 DEBUG: LDB indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, value=${value:02X}")
+            self.registers['B'] = value
+            self._update_nz_flags(value)
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xCE:  # LDX immediate
+            high = self.memory[pc + 1]
+            low = self.memory[pc + 2]
+            value = (high << 8) | low
+            self.debug_print(f"🔍 DEBUG: LDX immediate ${value:04X}")
+            self.registers['X'] = value
+            self._update_nz_flags(value)
+            self.registers['PC'] += 3
+            
+        elif opcode == 0xDE:  # LDX direct
+            addr = self.memory[pc + 1]
+            high = self.memory[addr]
+            low = self.memory[addr + 1]
+            value = (high << 8) | low
+            self.debug_print(f"🔍 DEBUG: LDX direct ${addr:02X}, value=${value:04X}")
+            self.registers['X'] = value
+            self._update_nz_flags(value)
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xFE:  # LDX extended
+            addr_high = self.memory[pc + 1]
+            addr_low = self.memory[pc + 2]
+            addr = (addr_high << 8) | addr_low
+            high = self.memory[addr]
+            low = self.memory[addr + 1]
+            value = (high << 8) | low
+            self.debug_print(f"🔍 DEBUG: LDX extended ${addr:04X}, value=${value:04X}")
+            self.registers['X'] = value
+            self._update_nz_flags(value)
+            self.registers['PC'] += 3
+            
+        elif opcode == 0xEE:  # LDX indexed
+            offset = self.memory[pc + 1]
+            addr = (self.registers['X'] + offset) & 0xFFFF
+            high = self.memory[addr]
+            low = self.memory[addr + 1]
+            value = (high << 8) | low
+            self.debug_print(f"🔍 DEBUG: LDX indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, value=${value:04X}")
+            self.registers['X'] = value
+            self._update_nz_flags(value)
+            self.registers['PC'] += 2
+            
+        # LDD (Load Double accumulator) Instructions
+        elif opcode == 0xCC:  # LDD immediate
+            high = self.memory[pc + 1]
+            low = self.memory[pc + 2]
+            value = (high << 8) | low
+            self.debug_print(f"🔍 DEBUG: LDD immediate ${value:04X}")
+            self.registers['A'] = high
+            self.registers['B'] = low
+            self._update_nz_flags(value)
+            self.registers['PC'] += 3
+            
+        elif opcode == 0xDC:  # LDD direct
+            addr = self.memory[pc + 1]
+            high = self.memory[addr]
+            low = self.memory[addr + 1]
+            value = (high << 8) | low
+            self.debug_print(f"🔍 DEBUG: LDD direct ${addr:02X}, value=${value:04X}")
+            self.registers['A'] = high
+            self.registers['B'] = low
+            self._update_nz_flags(value)
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xFC:  # LDD extended
+            addr_high = self.memory[pc + 1]
+            addr_low = self.memory[pc + 2]
+            addr = (addr_high << 8) | addr_low
+            high = self.memory[addr]
+            low = self.memory[addr + 1]
+            value = (high << 8) | low
+            self.debug_print(f"🔍 DEBUG: LDD extended ${addr:04X}, value=${value:04X}")
+            self.registers['A'] = high
+            self.registers['B'] = low
+            self._update_nz_flags(value)
+            self.registers['PC'] += 3
+            
+        elif opcode == 0xEC:  # LDD indexed
+            offset = self.memory[pc + 1]
+            addr = (self.registers['X'] + offset) & 0xFFFF
+            high = self.memory[addr]
+            low = self.memory[addr + 1]
+            value = (high << 8) | low
+            self.debug_print(f"🔍 DEBUG: LDD indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, value=${value:04X}")
+            self.registers['A'] = high
+            self.registers['B'] = low
+            self._update_nz_flags(value)
+            self.registers['PC'] += 2
+            
+        # Store Instructions
+        elif opcode == 0x97:  # STA direct
+            addr = self.memory[pc + 1]
+            self.debug_print(f"🔍 DEBUG: STA direct ${addr:02X}, A=${self.registers['A']:02X}")
+            self.memory[addr] = self.registers['A']
+            self._update_nz_flags(self.registers['A'])
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xB7:  # STA extended
+            high = self.memory[pc + 1]
+            low = self.memory[pc + 2]
+            addr = (high << 8) | low
+            self.debug_print(f"🔍 DEBUG: STA extended ${addr:04X}, A=${self.registers['A']:02X}")
+            self.memory[addr] = self.registers['A']
+            self._update_nz_flags(self.registers['A'])
+            self.registers['PC'] += 3
+            
+        elif opcode == 0xA7:  # STA indexed
+            offset = self.memory[pc + 1]
+            addr = (self.registers['X'] + offset) & 0xFFFF
+            self.debug_print(f"🔍 DEBUG: STA indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, A=${self.registers['A']:02X}")
+            self.memory[addr] = self.registers['A']
+            self._update_nz_flags(self.registers['A'])
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xD7:  # STB direct
+            addr = self.memory[pc + 1]
+            self.debug_print(f"🔍 DEBUG: STB direct ${addr:02X}, B=${self.registers['B']:02X}")
+            self.memory[addr] = self.registers['B']
+            self._update_nz_flags(self.registers['B'])
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xF7:  # STB extended
+            high = self.memory[pc + 1]
+            low = self.memory[pc + 2]
+            addr = (high << 8) | low
+            self.debug_print(f"🔍 DEBUG: STB extended ${addr:04X}, B=${self.registers['B']:02X}")
+            self.memory[addr] = self.registers['B']
+            self._update_nz_flags(self.registers['B'])
+            self.registers['PC'] += 3
+            
+        elif opcode == 0xE7:  # STB indexed
+            offset = self.memory[pc + 1]
+            addr = (self.registers['X'] + offset) & 0xFFFF
+            self.debug_print(f"🔍 DEBUG: STB indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, B=${self.registers['B']:02X}")
+            self.memory[addr] = self.registers['B']
+            self._update_nz_flags(self.registers['B'])
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xDF:  # STX direct
+            addr = self.memory[pc + 1]
+            self.debug_print(f"🔍 DEBUG: STX direct ${addr:02X}, X=${self.registers['X']:04X}")
+            self.memory[addr] = (self.registers['X'] >> 8) & 0xFF
+            self.memory[addr + 1] = self.registers['X'] & 0xFF
+            self._update_nz_flags(self.registers['X'])
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xFF:  # STX extended
+            high = self.memory[pc + 1]
+            low = self.memory[pc + 2]
+            addr = (high << 8) | low
+            self.debug_print(f"🔍 DEBUG: STX extended ${addr:04X}, X=${self.registers['X']:04X}")
+            self.memory[addr] = (self.registers['X'] >> 8) & 0xFF
+            self.memory[addr + 1] = self.registers['X'] & 0xFF
+            self._update_nz_flags(self.registers['X'])
+            self.registers['PC'] += 3
+            
+        # STD (Store Double accumulator) Instructions
+        elif opcode == 0xDD:  # STD direct
+            addr = self.memory[pc + 1]
+            d_value = (self.registers['A'] << 8) | self.registers['B']
+            self.debug_print(f"🔍 DEBUG: STD direct ${addr:02X}, D=${d_value:04X}")
+            self.memory[addr] = self.registers['A']
+            self.memory[addr + 1] = self.registers['B']
+            self._update_nz_flags(d_value)
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xFD:  # STD extended
+            high = self.memory[pc + 1]
+            low = self.memory[pc + 2]
+            addr = (high << 8) | low
+            d_value = (self.registers['A'] << 8) | self.registers['B']
+            self.debug_print(f"🔍 DEBUG: STD extended ${addr:04X}, D=${d_value:04X}")
+            self.memory[addr] = self.registers['A']
+            self.memory[addr + 1] = self.registers['B']
+            self._update_nz_flags(d_value)
+            self.registers['PC'] += 3
+            
+        elif opcode == 0xED:  # STD indexed
+            offset = self.memory[pc + 1]
+            addr = (self.registers['X'] + offset) & 0xFFFF
+            d_value = (self.registers['A'] << 8) | self.registers['B']
+            self.debug_print(f"🔍 DEBUG: STD indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, D=${d_value:04X}")
+            self.memory[addr] = self.registers['A']
+            self.memory[addr + 1] = self.registers['B']
+            self._update_nz_flags(d_value)
+            self.registers['PC'] += 2
+            
+        # Arithmetic Instructions
+        elif opcode == 0x8B:  # ADDA immediate
+            value = self.memory[pc + 1]
+            result = self.registers['A'] + value
+            self.debug_print(f"🔍 DEBUG: ADDA immediate ${value:02X}, A=${self.registers['A']:02X}, result=${result:02X}")
+            self._update_carry_flag(result > 255)
+            self.registers['A'] = result & 0xFF
+            self._update_nz_flags(self.registers['A'])
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xCB:  # ADDB immediate
+            value = self.memory[pc + 1]
+            result = self.registers['B'] + value
+            self.debug_print(f"🔍 DEBUG: ADDB immediate ${value:02X}, B=${self.registers['B']:02X}, result=${result:02X}")
+            self._update_carry_flag(result > 255)
+            self.registers['B'] = result & 0xFF
+            self._update_nz_flags(self.registers['B'])
+            self.registers['PC'] += 2
+            
+        # ADDD (Add to Double accumulator) Instructions
+        elif opcode == 0xC3:  # ADDD immediate
+            high = self.memory[pc + 1]
+            low = self.memory[pc + 2]
+            value = (high << 8) | low
+            d_reg = (self.registers['A'] << 8) | self.registers['B']
+            result = d_reg + value
+            self.debug_print(f"🔍 DEBUG: ADDD immediate ${value:04X}, D=${d_reg:04X}, result=${result:04X}")
+            self._update_carry_flag(result > 0xFFFF)
+            result = result & 0xFFFF
+            self.registers['A'] = (result >> 8) & 0xFF
+            self.registers['B'] = result & 0xFF
+            self._update_nz_flags(result)
+            self.registers['PC'] += 3
+            
+        elif opcode == 0xD3:  # ADDD direct
+            addr = self.memory[pc + 1]
+            high = self.memory[addr]
+            low = self.memory[addr + 1]
+            value = (high << 8) | low
+            d_reg = (self.registers['A'] << 8) | self.registers['B']
+            result = d_reg + value
+            self.debug_print(f"🔍 DEBUG: ADDD direct ${addr:02X}, D=${d_reg:04X}, mem=${value:04X}, result=${result:04X}")
+            self._update_carry_flag(result > 0xFFFF)
+            result = result & 0xFFFF
+            self.registers['A'] = (result >> 8) & 0xFF
+            self.registers['B'] = result & 0xFF
+            self._update_nz_flags(result)
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xF3:  # ADDD extended
+            addr_high = self.memory[pc + 1]
+            addr_low = self.memory[pc + 2]
+            addr = (addr_high << 8) | addr_low
+            high = self.memory[addr]
+            low = self.memory[addr + 1]
+            value = (high << 8) | low
+            d_reg = (self.registers['A'] << 8) | self.registers['B']
+            result = d_reg + value
+            self.debug_print(f"🔍 DEBUG: ADDD extended ${addr:04X}, D=${d_reg:04X}, mem=${value:04X}, result=${result:04X}")
+            self._update_carry_flag(result > 0xFFFF)
+            result = result & 0xFFFF
+            self.registers['A'] = (result >> 8) & 0xFF
+            self.registers['B'] = result & 0xFF
+            self._update_nz_flags(result)
+            self.registers['PC'] += 3
+            
+        elif opcode == 0xE3:  # ADDD indexed
+            offset = self.memory[pc + 1]
+            addr = (self.registers['X'] + offset) & 0xFFFF
+            high = self.memory[addr]
+            low = self.memory[addr + 1]
+            value = (high << 8) | low
+            d_reg = (self.registers['A'] << 8) | self.registers['B']
+            result = d_reg + value
+            self.debug_print(f"🔍 DEBUG: ADDD indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, D=${d_reg:04X}, mem=${value:04X}, result=${result:04X}")
+            self._update_carry_flag(result > 0xFFFF)
+            result = result & 0xFFFF
+            self.registers['A'] = (result >> 8) & 0xFF
+            self.registers['B'] = result & 0xFF
+            self._update_nz_flags(result)
+            self.registers['PC'] += 2
+            
+        # Comparison Instructions
+        elif opcode == 0x81:  # CMP A immediate
+            value = self.memory[pc + 1]
+            result = self.registers['A'] - value
+            self.debug_print(f"🔍 DEBUG: CMP A immediate ${value:02X}, A=${self.registers['A']:02X}, result=${result & 0xFF:02X}")
+            self._update_carry_flag(self.registers['A'] < value)
+            self._update_nz_flags(result & 0xFF)
+            self.registers['PC'] += 2
+            
+        elif opcode == 0xC1:  # CMP B immediate
+            value = self.memory[pc + 1]
+            result = self.registers['B'] - value
+            self.debug_print(f"🔍 DEBUG: CMP B immediate ${value:02X}, B=${self.registers['B']:02X}, result=${result & 0xFF:02X}")
+            self._update_carry_flag(self.registers['B'] < value)
+            self._update_nz_flags(result & 0xFF)
+            self.registers['PC'] += 2
+            
+        elif opcode == 0x8C:  # CPX immediate
+            high = self.memory[pc + 1]
+            low = self.memory[pc + 2]
+            value = (high << 8) | low
+            self.debug_print(f"🔍 DEBUG: CPX immediate ${value:04X}, X=${self.registers['X']:04X}")
+            self._compare_16bit(self.registers['X'], value)
+            self.registers['PC'] += 3
+            
+        # Jump Instructions
+        elif opcode == 0x7E:  # JMP extended
+            high = self.memory[pc + 1]
+            low = self.memory[pc + 2]
+            addr = (high << 8) | low
+            self.debug_print(f"🔍 DEBUG: JMP extended to ${addr:04X}")
+            self.registers['PC'] = addr
+            
+        elif opcode == 0x6E:  # JMP indexed
+            offset = self.memory[pc + 1]
+            addr = (self.registers['X'] + offset) & 0xFFFF
+            self.debug_print(f"🔍 DEBUG: JMP indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, target=${addr:04X}")
+            self.registers['PC'] = addr
+            
+        # M6801 Division and Shift Instructions
+        elif opcode == 0x02:  # IDIV (Integer Divide)
+            # Divide D by X, quotient in X, remainder in D
+            d_value = (self.registers['A'] << 8) | self.registers['B']
+            x_value = self.registers['X']
+            if x_value == 0:
+                self.debug_print("🔍 DEBUG: IDIV by zero, setting flags")
+                self.cc_flags['C'] = 1  # Set carry on divide by zero
+                self.cc_flags['V'] = 1  # Set overflow on divide by zero
+            else:
+                quotient = d_value // x_value
+                remainder = d_value % x_value
+                self.debug_print(f"🔍 DEBUG: IDIV, D=${d_value:04X} / X=${x_value:04X} = Q=${quotient:04X}, R=${remainder:04X}")
+                self.registers['X'] = quotient & 0xFFFF
+                self.registers['A'] = (remainder >> 8) & 0xFF
+                self.registers['B'] = remainder & 0xFF
+                self.cc_flags['C'] = 0
+                self.cc_flags['V'] = 0
+                self._update_nz_flags(quotient)
+            self._pack_cc_register()
+            self.registers['PC'] += 1
+            
+        elif opcode == 0x03:  # FDIV (Fractional Divide)
+            # Divide D by X, result in X, remainder in D (fractional)
+            d_value = (self.registers['A'] << 8) | self.registers['B']
+            x_value = self.registers['X']
+            if x_value == 0 or d_value >= x_value:
+                self.debug_print("🔍 DEBUG: FDIV invalid operation, setting flags")
+                self.cc_flags['C'] = 1  # Set carry on invalid operation
+                self.cc_flags['V'] = 1  # Set overflow on invalid operation
+            else:
+                # Shift D left 16 positions and divide by X
+                shifted_d = d_value << 16
+                quotient = shifted_d // x_value
+                remainder = shifted_d % x_value
+                self.debug_print(f"🔍 DEBUG: FDIV, D=${d_value:04X} / X=${x_value:04X} = Q=${quotient:04X}")
+                self.registers['X'] = quotient & 0xFFFF
+                self.registers['A'] = (remainder >> 24) & 0xFF
+                self.registers['B'] = (remainder >> 16) & 0xFF
+                self.cc_flags['C'] = 0
+                self.cc_flags['V'] = 0
+                self._update_nz_flags(quotient)
+            self._pack_cc_register()
+            self.registers['PC'] += 1
+            
+        elif opcode == 0x04:  # LSRD (Logical Shift Right Double)
+            d_value = (self.registers['A'] << 8) | self.registers['B']
+            self.debug_print(f"🔍 DEBUG: LSRD, D=${d_value:04X}")
+            self.cc_flags['C'] = d_value & 1  # Save LSB in carry
+            d_value = d_value >> 1
+            self.registers['A'] = (d_value >> 8) & 0xFF
+            self.registers['B'] = d_value & 0xFF
+            self._update_nz_flags(d_value)
+            self.registers['PC'] += 1
+            
+        elif opcode == 0x05:  # ASLD (Arithmetic Shift Left Double)
+            d_value = (self.registers['A'] << 8) | self.registers['B']
+            self.debug_print(f"🔍 DEBUG: ASLD, D=${d_value:04X}")
+            self.cc_flags['C'] = (d_value & 0x8000) >> 15  # Save MSB in carry
+            # Check for overflow (sign change)
+            self.cc_flags['V'] = ((d_value & 0x8000) >> 15) ^ ((d_value & 0x4000) >> 14)
+            d_value = (d_value << 1) & 0xFFFF
+            self.registers['A'] = (d_value >> 8) & 0xFF
+            self.registers['B'] = d_value & 0xFF
+            self._update_nz_flags(d_value)
+            self._pack_cc_register()
+            self.registers['PC'] += 1
+            
+        # Additional M6800 Instructions
+        elif opcode == 0x3F:  # SWI (Software Interrupt)
+            self.debug_print("🔍 DEBUG: SWI - software interrupt, halting")
+            # In a real system this would vector to interrupt handler
+            # For simulation, we'll just halt
             self.execution_halted = True
-    
-    def _update_nz_flags(self, value: int):
-        """Update Negative and Zero flags based on value."""
-        old_n = self.cc_flags['N']
-        old_z = self.cc_flags['Z']
-        self.cc_flags['N'] = 1 if (value & 0x80) != 0 else 0
-        self.cc_flags['Z'] = 1 if (value & 0xFF) == 0 else 0
+            
+        elif opcode == 0x8F:  # XGDX (Exchange D and X) - M6811
+            d_value = (self.registers['A'] << 8) | self.registers['B']
+            x_value = self.registers['X']
+            self.debug_print(f"🔍 DEBUG: XGDX, D=${d_value:04X}, X=${x_value:04X}")
+            self.registers['A'] = (x_value >> 8) & 0xFF
+            self.registers['B'] = x_value & 0xFF
+            self.registers['X'] = d_value
+            self.registers['PC'] += 1
+            
+        # M6811 Prefix Instructions ($18 prefix)
+        elif opcode == 0x18:  # M6811 Extended Instructions
+            if pc + 1 >= 0x10000:
+                self.debug_print(f"❌ DEBUG: M6811 prefix $18 at PC=${pc:04X} but no next byte")
+                self.execution_halted = True
+                return False
+                
+            next_opcode = self.memory[pc + 1]
+            self.debug_print(f"🔍 DEBUG: M6811 prefix $18 at PC=${pc:04X}, next opcode=${next_opcode:02X}")
+            
+            if next_opcode == 0xCE:  # LDY immediate
+                high = self.memory[pc + 2]
+                low = self.memory[pc + 3]
+                value = (high << 8) | low
+                self.debug_print(f"🔍 DEBUG: LDY immediate ${value:04X}")
+                self.registers['Y'] = value
+                self._update_nz_flags(value)
+                self.registers['PC'] += 4
+                
+            elif next_opcode == 0xDE:  # LDY direct
+                addr = self.memory[pc + 2]
+                high = self.memory[addr]
+                low = self.memory[addr + 1]
+                value = (high << 8) | low
+                self.debug_print(f"🔍 DEBUG: LDY direct ${addr:02X}, value=${value:04X}")
+                self.registers['Y'] = value
+                self._update_nz_flags(value)
+                self.registers['PC'] += 3
+                
+            elif next_opcode == 0xFE:  # LDY extended
+                addr_high = self.memory[pc + 2]
+                addr_low = self.memory[pc + 3]
+                addr = (addr_high << 8) | addr_low
+                high = self.memory[addr]
+                low = self.memory[addr + 1]
+                value = (high << 8) | low
+                self.debug_print(f"🔍 DEBUG: LDY extended ${addr:04X}, value=${value:04X}")
+                self.registers['Y'] = value
+                self._update_nz_flags(value)
+                self.registers['PC'] += 4
+                
+            elif next_opcode == 0xEE:  # LDY indexed
+                offset = self.memory[pc + 2]
+                addr = (self.registers['X'] + offset) & 0xFFFF
+                high = self.memory[addr]
+                low = self.memory[addr + 1]
+                value = (high << 8) | low
+                self.debug_print(f"🔍 DEBUG: LDY indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, value=${value:04X}")
+                self.registers['Y'] = value
+                self._update_nz_flags(value)
+                self.registers['PC'] += 3
+                
+            elif next_opcode == 0xDF:  # STY direct
+                addr = self.memory[pc + 2]
+                self.debug_print(f"🔍 DEBUG: STY direct ${addr:02X}, Y=${self.registers['Y']:04X}")
+                self.memory[addr] = (self.registers['Y'] >> 8) & 0xFF
+                self.memory[addr + 1] = self.registers['Y'] & 0xFF
+                self._update_nz_flags(self.registers['Y'])
+                self.registers['PC'] += 3
+                
+            elif next_opcode == 0xFF:  # STY extended
+                addr_high = self.memory[pc + 2]
+                addr_low = self.memory[pc + 3]
+                addr = (addr_high << 8) | addr_low
+                self.debug_print(f"🔍 DEBUG: STY extended ${addr:04X}, Y=${self.registers['Y']:04X}")
+                self.memory[addr] = (self.registers['Y'] >> 8) & 0xFF
+                self.memory[addr + 1] = self.registers['Y'] & 0xFF
+                self._update_nz_flags(self.registers['Y'])
+                self.registers['PC'] += 4
+                
+            elif next_opcode == 0xEF:  # STY indexed
+                offset = self.memory[pc + 2]
+                addr = (self.registers['X'] + offset) & 0xFFFF
+                self.debug_print(f"🔍 DEBUG: STY indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, Y=${self.registers['Y']:04X}")
+                self.memory[addr] = (self.registers['Y'] >> 8) & 0xFF
+                self.memory[addr + 1] = self.registers['Y'] & 0xFF
+                self._update_nz_flags(self.registers['Y'])
+                self.registers['PC'] += 3
+                
+            elif next_opcode == 0x08:  # INY (Increment Y)
+                self.registers['Y'] = (self.registers['Y'] + 1) & 0xFFFF
+                self.debug_print(f"🔍 DEBUG: INY, Y=${self.registers['Y']:04X}")
+                self._update_nz_flags(self.registers['Y'])
+                self.registers['PC'] += 2
+                
+            elif next_opcode == 0x09:  # DEY (Decrement Y)
+                self.registers['Y'] = (self.registers['Y'] - 1) & 0xFFFF
+                self.debug_print(f"🔍 DEBUG: DEY, Y=${self.registers['Y']:04X}")
+                self._update_nz_flags(self.registers['Y'])
+                self.registers['PC'] += 2
+                
+            elif next_opcode == 0x8C:  # CPY immediate
+                high = self.memory[pc + 2]
+                low = self.memory[pc + 3]
+                value = (high << 8) | low
+                self.debug_print(f"🔍 DEBUG: CPY immediate ${value:04X}, Y=${self.registers['Y']:04X}")
+                self._compare_16bit(self.registers['Y'], value)
+                self.registers['PC'] += 4
+                
+            elif next_opcode == 0x9C:  # CPY direct
+                addr = self.memory[pc + 2]
+                high = self.memory[addr]
+                low = self.memory[addr + 1]
+                value = (high << 8) | low
+                self.debug_print(f"🔍 DEBUG: CPY direct ${addr:02X}, Y=${self.registers['Y']:04X}, mem=${value:04X}")
+                self._compare_16bit(self.registers['Y'], value)
+                self.registers['PC'] += 3
+                
+            elif next_opcode == 0xBC:  # CPY extended
+                addr_high = self.memory[pc + 2]
+                addr_low = self.memory[pc + 3]
+                addr = (addr_high << 8) | addr_low
+                high = self.memory[addr]
+                low = self.memory[addr + 1]
+                value = (high << 8) | low
+                self.debug_print(f"🔍 DEBUG: CPY extended ${addr:04X}, Y=${self.registers['Y']:04X}, mem=${value:04X}")
+                self._compare_16bit(self.registers['Y'], value)
+                self.registers['PC'] += 4
+                
+            elif next_opcode == 0xAC:  # CPY indexed
+                offset = self.memory[pc + 2]
+                addr = (self.registers['X'] + offset) & 0xFFFF
+                high = self.memory[addr]
+                low = self.memory[addr + 1]
+                value = (high << 8) | low
+                self.debug_print(f"🔍 DEBUG: CPY indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, Y=${self.registers['Y']:04X}, mem=${value:04X}")
+                self._compare_16bit(self.registers['Y'], value)
+                self.registers['PC'] += 3
+                
+            elif next_opcode == 0x1A:  # ABY (Add B to Y)
+                result = self.registers['Y'] + self.registers['B']
+                self.debug_print(f"🔍 DEBUG: ABY, Y=${self.registers['Y']:04X}, B=${self.registers['B']:02X}, result=${result:04X}")
+                self.registers['Y'] = result & 0xFFFF
+                self.registers['PC'] += 2
+                
+            elif next_opcode == 0x3C:  # PSHY (Push Y to stack)
+                self.debug_print(f"🔍 DEBUG: PSHY, Y=${self.registers['Y']:04X}, SP=${self.registers['SP']:04X}")
+                self.memory[self.registers['SP']] = self.registers['Y'] & 0xFF
+                self.registers['SP'] = (self.registers['SP'] - 1) & 0xFFFF
+                self.memory[self.registers['SP']] = (self.registers['Y'] >> 8) & 0xFF
+                self.registers['SP'] = (self.registers['SP'] - 1) & 0xFFFF
+                self.registers['PC'] += 2
+                
+            elif next_opcode == 0x38:  # PULY (Pull Y from stack)
+                self.debug_print(f"🔍 DEBUG: PULY, SP=${self.registers['SP']:04X}")
+                self.registers['SP'] = (self.registers['SP'] + 1) & 0xFFFF
+                high = self.memory[self.registers['SP']]
+                self.registers['SP'] = (self.registers['SP'] + 1) & 0xFFFF
+                low = self.memory[self.registers['SP']]
+                self.registers['Y'] = (high << 8) | low
+                self.debug_print(f"🔍 DEBUG: PULY result, Y=${self.registers['Y']:04X}")
+                self.registers['PC'] += 2
+                
+            elif next_opcode == 0x8F:  # XGDY (Exchange D and Y)
+                d_value = (self.registers['A'] << 8) | self.registers['B']
+                y_value = self.registers['Y']
+                self.debug_print(f"🔍 DEBUG: XGDY, D=${d_value:04X}, Y=${y_value:04X}")
+                self.registers['A'] = (y_value >> 8) & 0xFF
+                self.registers['B'] = y_value & 0xFF
+                self.registers['Y'] = d_value
+                self.registers['PC'] += 2
+                
+            elif next_opcode == 0x30:  # TSY (Transfer SP to Y)
+                self.debug_print(f"🔍 DEBUG: TSY, SP=${self.registers['SP']:04X}")
+                self.registers['Y'] = (self.registers['SP'] + 1) & 0xFFFF
+                self.registers['PC'] += 2
+                
+            elif next_opcode == 0x35:  # TYS (Transfer Y to SP)
+                self.debug_print(f"🔍 DEBUG: TYS, Y=${self.registers['Y']:04X}")
+                self.registers['SP'] = (self.registers['Y'] - 1) & 0xFFFF
+                self.registers['PC'] += 2
+                
+            elif next_opcode == 0xCF:  # STS extended (Store Stack Pointer)
+                addr_high = self.memory[pc + 2]
+                addr_low = self.memory[pc + 3]
+                addr = (addr_high << 8) | addr_low
+                self.debug_print(f"🔍 DEBUG: STS extended ${addr:04X}, SP=${self.registers['SP']:04X}")
+                self.memory[addr] = (self.registers['SP'] >> 8) & 0xFF
+                self.memory[addr + 1] = self.registers['SP'] & 0xFF
+                self._update_nz_flags(self.registers['SP'])
+                self.registers['PC'] += 4
+                
+            elif next_opcode == 0xDC:  # LDD direct (M6811 extended)
+                addr = self.memory[pc + 2]
+                high = self.memory[addr]
+                low = self.memory[addr + 1]
+                value = (high << 8) | low
+                self.debug_print(f"🔍 DEBUG: LDD direct (M6811) ${addr:02X}, value=${value:04X}")
+                self.registers['A'] = high
+                self.registers['B'] = low
+                self._update_nz_flags(value)
+                self.registers['PC'] += 3
+                
+            else:
+                self.debug_print(f"❌ DEBUG: Unknown M6811 instruction $18 ${next_opcode:02X} at PC=${pc:04X}")
+                self.execution_halted = True
+                return False
+            
+        else:
+            self.debug_print(f"❌ DEBUG: Unknown opcode ${opcode:02X} at PC=${pc:04X}")
+            self.execution_halted = True
+            return False
+        
+        return True 
+
+    def _update_nz_flags(self, value):
+        """Update N and Z flags based on value."""
+        self.cc_flags['N'] = 1 if (value & 0x80) else 0
+        self.cc_flags['Z'] = 1 if value == 0 else 0
         self._pack_cc_register()
-        self.debug_print(f"🚩 DEBUG: Flags updated - N: {old_n}->{self.cc_flags['N']}, Z: {old_z}->{self.cc_flags['Z']}")
+    
+    def _compare_16bit(self, reg_value, compare_value):
+        """Compare two 16-bit values and update flags."""
+        result = reg_value - compare_value
+        
+        # Update flags
+        self.cc_flags['Z'] = 1 if result == 0 else 0
+        self.cc_flags['N'] = 1 if (result & 0x8000) else 0
+        self.cc_flags['C'] = 1 if reg_value < compare_value else 0
+        
+        # Overflow flag (V)
+        # Set if the signs of the operands are different and the sign of the result
+        # differs from the sign of the minuend
+        reg_sign = reg_value & 0x8000
+        comp_sign = compare_value & 0x8000
+        result_sign = result & 0x8000
+        
+        if reg_sign != comp_sign and reg_sign != result_sign:
+            self.cc_flags['V'] = 1
+        else:
+            self.cc_flags['V'] = 0
+            
+        self._pack_cc_register()
     
     def _update_carry_flag(self, carry: bool):
-        """Update Carry flag."""
-        old_c = self.cc_flags['C']
+        """Update carry flag and pack CC register."""
+        self.debug_print(f"🚩 DEBUG: Carry flag updated: {self.cc_flags['C']}->{1 if carry else 0}")
         self.cc_flags['C'] = 1 if carry else 0
         self._pack_cc_register()
-        self.debug_print(f"🚩 DEBUG: Carry flag updated: {old_c}->{self.cc_flags['C']}")
     
     def _pack_cc_register(self):
         """Pack condition code flags into CC register."""
-        cc = 0
-        cc |= (self.cc_flags['H'] & 1) << 5
-        cc |= (self.cc_flags['I'] & 1) << 4
-        cc |= (self.cc_flags['N'] & 1) << 3
-        cc |= (self.cc_flags['Z'] & 1) << 2
-        cc |= (self.cc_flags['V'] & 1) << 1
-        cc |= (self.cc_flags['C'] & 1) << 0
-        self.registers['CC'] = cc
+        self.registers['CC'] = (
+            (self.cc_flags['H'] << 5) |
+            (self.cc_flags['I'] << 4) |
+            (self.cc_flags['N'] << 3) |
+            (self.cc_flags['Z'] << 2) |
+            (self.cc_flags['V'] << 1) |
+            (self.cc_flags['C'] << 0)
+        )
     
     def _unpack_cc_register(self):
         """Unpack CC register into individual flags."""
@@ -625,55 +1125,47 @@ class M6800Simulator:
         self.cc_flags['V'] = (cc >> 1) & 1
         self.cc_flags['C'] = (cc >> 0) & 1
     
+    # Public interface methods
     def get_state(self) -> Dict[str, Any]:
-        """
-        Get current simulator state.
-        
-        Returns:
-            Dictionary containing registers, flags, and execution status
-        """
+        """Get complete simulator state."""
         return {
             'registers': self.registers.copy(),
             'flags': self.cc_flags.copy(),
-            'execution_halted': self.execution_halted,
+            'halted': self.execution_halted,
             'instruction_count': self.instruction_count,
+            'program_loaded': bool(self.program_data),
             'program_start': self.program_start
         }
     
     def get_memory_dump(self, start_addr: int = None, length: int = 256) -> str:
-        """
-        Get formatted memory dump.
-        
-        Args:
-            start_addr: Starting address for dump (defaults to program start)
-            length: Number of bytes to dump
-            
-        Returns:
-            Formatted memory dump string
-        """
+        """Get formatted memory dump."""
         if start_addr is None:
-            start_addr = self.program_start
-            
-        lines = []
-        lines.append(f"Memory Dump (from ${start_addr:04X}):")
-        lines.append("Address  +0 +1 +2 +3 +4 +5 +6 +7 +8 +9 +A +B +C +D +E +F  ASCII")
-        lines.append("-" * 70)
+            # Show memory around program area
+            if self.program_data:
+                start_addr = min(self.program_data.keys())
+                start_addr = (start_addr // 16) * 16  # Align to 16-byte boundary
+            else:
+                start_addr = 0x1000  # Default start
         
-        for i in range(0, length, 16):
-            addr = start_addr + i
-            if addr >= 0x10000:
-                break
-                
-            # Address
+        # Ensure start address is valid
+        start_addr = max(0, min(start_addr, 0xFFFF))
+        end_addr = min(start_addr + length, 0x10000)
+        
+        dump = f"Memory Dump (${start_addr:04X} - ${end_addr-1:04X}):\n"
+        dump += "Address  +0 +1 +2 +3 +4 +5 +6 +7 +8 +9 +A +B +C +D +E +F  ASCII\n"
+        dump += "-" * 70 + "\n"
+        
+        for addr in range(start_addr, end_addr, 16):
+            # Address column
             line = f"{addr:04X}:   "
             
-            # Hex bytes
+            # Hex values
             hex_part = ""
             ascii_part = ""
             
-            for j in range(16):
-                byte_addr = addr + j
-                if byte_addr < 0x10000 and i + j < length:
+            for i in range(16):
+                byte_addr = addr + i
+                if byte_addr < end_addr:
                     byte_val = self.memory[byte_addr]
                     hex_part += f"{byte_val:02X} "
                     
@@ -687,17 +1179,17 @@ class M6800Simulator:
                     ascii_part += " "
             
             line += hex_part + " " + ascii_part
-            lines.append(line)
+            dump += line + "\n"
             
-            # Stop if we've shown enough
-            if len(lines) > 20:  # Limit display size
-                lines.append("... (truncated)")
+            # Limit output to reasonable size
+            if len(dump) > 4000:
+                dump += "... (truncated)\n"
                 break
         
-        return '\n'.join(lines)
+        return dump
     
     def get_memory_value(self, address: int) -> int:
-        """Get value at memory address."""
+        """Get value from memory address."""
         if 0 <= address <= 0xFFFF:
             return self.memory[address]
         return 0
@@ -708,24 +1200,25 @@ class M6800Simulator:
             self.memory[address] = value & 0xFF
     
     def get_register_value(self, register: str) -> int:
-        """Get register value."""
-        return self.registers.get(register.upper(), 0)
+        """Get register value by name."""
+        return self.registers.get(register, 0)
     
     def set_register_value(self, register: str, value: int):
-        """Set register value."""
-        reg = register.upper()
-        if reg in self.registers:
-            if reg in ['A', 'B', 'CC']:
-                self.registers[reg] = value & 0xFF
+        """Set register value by name."""
+        if register in self.registers:
+            if register in ['A', 'B', 'CC']:
+                self.registers[register] = value & 0xFF
+            elif register in ['X', 'Y', 'SP', 'PC']:
+                self.registers[register] = value & 0xFFFF
             else:
-                self.registers[reg] = value & 0xFFFF
+                self.registers[register] = value
                 
-            # Update flags if CC register changed
-            if reg == 'CC':
+            # Update flags if CC register was modified
+            if register == 'CC':
                 self._unpack_cc_register()
     
     def is_halted(self) -> bool:
-        """Check if execution is halted."""
+        """Check if simulator is halted."""
         return self.execution_halted
     
     def get_instruction_count(self) -> int:
@@ -733,27 +1226,29 @@ class M6800Simulator:
         return self.instruction_count
 
 def main():
-    """Test function for the simulator."""
+    """Test the simulator with a simple program."""
     simulator = M6800Simulator()
     
-    # Test program: Load A with $55, store at $2000
+    # Simple test program
     test_program = {
-        0x1000: 0x86,  # LDA immediate
-        0x1001: 0x55,  # value $55
-        0x1002: 0xB7,  # STA extended
-        0x1003: 0x20,  # high byte of $2000
-        0x1004: 0x00,  # low byte of $2000
-        0x1005: 0x3F   # SWI (halt)
+        0x1000: 0x86,  # LDA #$55
+        0x1001: 0x55,
+        0x1002: 0xB7,  # STA $2000
+        0x1003: 0x20,
+        0x1004: 0x00,
+        0x1005: 0x00   # BRK
     }
     
+    print("Loading test program...")
     simulator.load_program(test_program)
-    print("Initial state:", simulator.get_state())
     
-    # Run simulation
+    print("\nRunning simulation...")
     steps = simulator.run()
-    print(f"\nExecuted {steps} instructions")
-    print("Final state:", simulator.get_state())
-    print(f"Memory at $2000: ${simulator.get_memory_value(0x2000):02X}")
+    
+    print(f"\nSimulation completed in {steps} steps")
+    print(f"Final state: {simulator.get_state()}")
+    print(f"\nMemory dump:")
+    print(simulator.get_memory_dump(0x1000, 64))
 
 if __name__ == "__main__":
     main() 
