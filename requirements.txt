@@ -1,0 +1,16 @@
+# Motorola 6800 Assembler - Python Requirements
+# System Programming Course Final Project
+
+# Python Version Required: 3.7+
+# This project uses only built-in Python modules:
+# - tkinter (GUI framework) - usually included with Python
+# - typing (type hints) - built-in since Python 3.5
+# - re (regular expressions) - built-in
+# - os (operating system interface) - built-in
+
+# No additional packages required!
+# The project is designed to work with a standard Python installation.
+
+# Optional packages for development:
+# mypy>=0.900  # For static type checking (development only)
+# black>=21.0  # For code formatting (development only) 
