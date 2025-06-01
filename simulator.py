@@ -290,6 +290,19 @@ class M6800Simulator:
             self._update_nz_flags(new_value)
             self.registers['PC'] += 2
             
+        elif opcode == 0x52:  # NEGB extended (Negate memory location extended addressing)
+            high = self.memory[pc + 1]
+            low = self.memory[pc + 2]
+            addr = (high << 8) | low
+            old_value = self.memory[addr]
+            new_value = (256 - old_value) & 0xFF
+            self.debug_print(f"🔍 DEBUG: NEGB extended ${addr:04X}, mem=${old_value:02X} -> ${new_value:02X}")
+            self.memory[addr] = new_value
+            self.cc_flags['C'] = 1 if old_value != 0 else 0
+            self.cc_flags['V'] = 1 if old_value == 0x80 else 0
+            self._update_nz_flags(new_value)
+            self.registers['PC'] += 3
+            
         elif opcode == 0x53:  # COMB (Complement B register)
             old_b = self.registers['B']
             self.registers['B'] = (~old_b) & 0xFF
@@ -381,6 +394,21 @@ class M6800Simulator:
                 self.registers['PC'] = target
             else:
                 self.debug_print("🔍 DEBUG: BEQ not taking branch")
+                self.registers['PC'] += 2
+                
+        elif opcode == 0x23:  # BLS (Branch if Lower or Same)
+            offset = self.memory[pc + 1]
+            if offset & 0x80:
+                offset = offset - 256
+            # Branch if C=1 OR Z=1 (lower or same for unsigned comparison)
+            should_branch = self.cc_flags['C'] or self.cc_flags['Z']
+            self.debug_print(f"🔍 DEBUG: BLS relative offset={offset}, C={self.cc_flags['C']}, Z={self.cc_flags['Z']}, branch={should_branch}")
+            if should_branch:
+                target = (pc + 2 + offset) & 0xFFFF
+                self.debug_print(f"🔍 DEBUG: BLS taking branch to ${target:04X}")
+                self.registers['PC'] = target
+            else:
+                self.debug_print("🔍 DEBUG: BLS not taking branch")
                 self.registers['PC'] += 2
                 
         elif opcode == 0x30:  # TSX (Transfer Stack Pointer to X)
@@ -663,7 +691,7 @@ class M6800Simulator:
             self.memory[addr] = self.registers['B']
             self._update_nz_flags(self.registers['B'])
             self.registers['PC'] += 2
-            
+                
         elif opcode == 0xDF:  # STX direct
             addr = self.memory[pc + 1]
             self.debug_print(f"🔍 DEBUG: STX direct ${addr:02X}, X=${self.registers['X']:04X}")
@@ -1163,7 +1191,7 @@ class M6800Simulator:
             return False
         
         return True 
-
+    
     def _update_nz_flags(self, value):
         """Update N and Z flags based on value."""
         self.cc_flags['N'] = 1 if (value & 0x80) else 0

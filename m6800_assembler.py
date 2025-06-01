@@ -11,17 +11,18 @@ class M6800Assembler:
     """Core assembler class for Motorola 6800 processor."""
     
     def __init__(self):
-        """Initialize the assembler with instruction set and addressing modes."""
+        """Initialize the assembler."""
         self.instruction_set = self._build_instruction_set()
-        self.labels = {}  # Label name -> address mapping
-        self.current_address = 0x0000
-        self.origin_address = 0x0000
+        self.four_letter_mapping = self._get_4letter_mapping()
+        self.labels = {}
         self.assembled_lines = []
         self.errors = []
         self.messages = []
+        self.origin_address = 0x1000
+        self.current_address = 0x1000
         
     def _build_instruction_set(self) -> Dict[str, Dict]:
-        """Build the complete M6800 instruction set with opcodes and addressing modes."""
+        """Build the complete M6800/M6801/M6811 instruction set."""
         return {
             # Accumulator and Memory Operations
             'ABA': {'IMM': None, 'DIR': None, 'EXT': None, 'IDX': None, 'INH': 0x1B},
@@ -52,6 +53,7 @@ class M6800Assembler:
             'CLV': {'INH': 0x0A}, 'CMP': {'IMM': {'A': 0x81, 'B': 0xC1}, 'DIR': {'A': 0x91, 'B': 0xD1}, 
                    'EXT': {'A': 0xB1, 'B': 0xF1}, 'IDX': {'A': 0xA1, 'B': 0xE1}},
             'COM': {'DIR': 0x03, 'EXT': 0x73, 'IDX': 0x63, 'INH': {'A': 0x43, 'B': 0x53}},
+            'NEG': {'DIR': 0x00, 'EXT': 0x70, 'IDX': 0x60, 'INH': {'A': 0x40, 'B': 0x50}},
             'CPX': {'IMM': 0x8C, 'DIR': 0x9C, 'EXT': 0xBC, 'IDX': 0xAC},
             
             # Decimal Adjust
@@ -118,6 +120,9 @@ class M6800Assembler:
             # Transfer Index Register
             'WAI': {'INH': 0x3E},
             
+            # Break/Halt instruction
+            'BRK': {'INH': 0x00},  # Added BRK instruction
+            
             # M6801/M6811 Specific Instructions (Enhanced support)
             'LSRD': {'INH': 0x04},     # Logical shift right D register
             'ASLD': {'INH': 0x05},     # Arithmetic shift left D register  
@@ -159,8 +164,7 @@ class M6800Assembler:
         """
         # Reset assembler state
         self.labels = {}
-        self.current_address = 0x0000
-        self.origin_address = 0x0000
+        self.current_address = self.origin_address
         self.assembled_lines = []
         self.errors = []
         self.messages = []
@@ -215,7 +219,8 @@ class M6800Assembler:
                     # If first token looks like a label and second token is a known instruction
                     if (self._is_valid_label(potential_label) and 
                         (potential_instruction in self.instruction_set or 
-                         potential_instruction in ['ORG', 'END'])):
+                         potential_instruction in self.four_letter_mapping or
+                         potential_instruction in ['ORG', 'END', '.ORG', '.END', '.BYTE'])):
                         
                         self.labels[potential_label] = self.current_address
                         clean_line = ' '.join(tokens[1:])  # Remove label from line
@@ -228,7 +233,8 @@ class M6800Assembler:
             if tokens:
                 opcode = tokens[0].upper()
                 
-                if opcode == 'ORG':
+                # Handle both ORG and .ORG
+                if opcode == 'ORG' or opcode == '.ORG':
                     if len(tokens) >= 2:
                         try:
                             self.origin_address = self._parse_number(tokens[1])
@@ -236,11 +242,26 @@ class M6800Assembler:
                             self.messages.append(f"Line {line_num}: Origin set to ${self.origin_address:04X}")
                         except ValueError:
                             self.errors.append(f"Line {line_num}: Invalid ORG address: {tokens[1]}")
-                elif opcode == 'END':
+                # Handle both END and .END
+                elif opcode == 'END' or opcode == '.END':
                     break
+                # Handle .BYTE directive
+                elif opcode == '.BYTE':
+                    if len(tokens) >= 2:
+                        try:
+                            value = self._parse_number(tokens[1])
+                            self.current_address += 1  # .BYTE takes 1 byte
+                        except ValueError:
+                            self.errors.append(f"Line {line_num}: Invalid .BYTE value: {tokens[1]}")
                 elif opcode in self.instruction_set:
                     # Calculate instruction size for address calculation
                     size = self._calculate_instruction_size(opcode, tokens[1:] if len(tokens) > 1 else [])
+                    self.current_address += size
+                # Check for 4-letter instruction syntax
+                elif opcode in self.four_letter_mapping:
+                    # Map 4-letter to 3-letter and calculate size
+                    mapped_opcode = self.four_letter_mapping[opcode]
+                    size = self._calculate_instruction_size(mapped_opcode, tokens[1:] if len(tokens) > 1 else [])
                     self.current_address += size
     
     def _second_pass(self, lines: List[str]) -> None:
@@ -268,7 +289,8 @@ class M6800Assembler:
                     # If first token looks like a label and second token is a known instruction
                     if (self._is_valid_label(potential_label) and 
                         (potential_instruction in self.instruction_set or 
-                         potential_instruction in ['ORG', 'END'])):
+                         potential_instruction in self.four_letter_mapping or
+                         potential_instruction in ['ORG', 'END', '.ORG', '.END', '.BYTE'])):
                         
                         clean_line = ' '.join(tokens[1:])  # Remove label from line
 
@@ -282,15 +304,60 @@ class M6800Assembler:
             opcode = tokens[0].upper()
             
             # Handle pseudo-instructions
-            if opcode == 'ORG':
+            # Handle both ORG and .ORG
+            if opcode == 'ORG' or opcode == '.ORG':
                 if len(tokens) >= 2:
                     self.current_address = self._parse_number(tokens[1])
                 continue
-            elif opcode == 'END':
+            # Handle both END and .END
+            elif opcode == 'END' or opcode == '.END':
                 break
+            # Handle .BYTE directive
+            elif opcode == '.BYTE':
+                if len(tokens) >= 2:
+                    try:
+                        value = self._parse_number(tokens[1])
+                        self.assembled_lines.append({
+                            'line': line_num,
+                            'address': f"${self.current_address:04X}",
+                            'object_code': f"{value:02X}",
+                            'assembly': original_line
+                        })
+                        self.current_address += 1
+                    except ValueError:
+                        self.errors.append(f"Line {line_num}: Invalid .BYTE value: {tokens[1]}")
+                continue
+            
+            # Check for 4-letter instruction syntax first
+            if opcode in self.four_letter_mapping:
+                mapped_opcode = self.four_letter_mapping[opcode]
+                # Determine register from 4-letter instruction
+                register = opcode[-1] if opcode[-1] in ['A', 'B'] else None
+                
+                try:
+                    operands = tokens[1:] if len(tokens) > 1 else []
+                    # Add register to operands if instruction implies it
+                    if register and mapped_opcode in ['ADD', 'ADC', 'SUB', 'SBC', 'AND', 'EOR', 'ORA', 'BIT', 'CMP', 
+                                                      'TST', 'CLR', 'COM', 'NEG', 'INC', 'DEC', 'ASL', 'ASR', 'LSR', 
+                                                      'ROL', 'ROR', 'PSH', 'PUL']:
+                        operands = [register] + operands
+                    
+                    machine_code = self._assemble_instruction(mapped_opcode, operands)
+                    
+                    self.assembled_lines.append({
+                        'line': line_num,
+                        'address': f"${self.current_address:04X}",
+                        'object_code': ' '.join(f"{byte:02X}" for byte in machine_code),
+                        'assembly': original_line
+                    })
+                    
+                    self.current_address += len(machine_code)
+                    
+                except Exception as e:
+                    self.errors.append(f"Line {line_num}: {str(e)}")
             
             # Handle regular instructions
-            if opcode in self.instruction_set:
+            elif opcode in self.instruction_set:
                 try:
                     operands = tokens[1:] if len(tokens) > 1 else []
                     machine_code = self._assemble_instruction(opcode, operands)
@@ -417,7 +484,8 @@ class M6800Assembler:
             # Account for multi-byte instruction length
             instruction_length = len(machine_code) + 1  # +1 for the offset byte
             offset = target - (self.current_address + instruction_length)
-            if offset < -128 or offset > 127:
+            # Only validate range if target is non-zero (i.e., label was resolved)
+            if target != 0 and (offset < -128 or offset > 127):
                 raise ValueError(f"Branch target out of range: {offset}")
             machine_code.append(offset & 0xFF)
         
@@ -484,11 +552,11 @@ class M6800Assembler:
             # Check if it's a label
             if num_str in self.labels:
                 return self.labels[num_str]
-            # If it's not a number and not a defined label, assume it's a forward reference
+            # If it's not a number and not a defined label, try to parse as number
             try:
                 return int(num_str)
             except ValueError:
-                # Return 0 for undefined labels during first pass
+                # Return 0 for undefined labels (forward references) during first pass
                 return 0
     
     def _is_branch_target(self, operand: str) -> bool:
@@ -770,6 +838,26 @@ LABEL NOP     ; Label definition
       END     ; End of program
 """
         return reference
+
+    def _get_4letter_mapping(self) -> Dict[str, str]:
+        """Get mapping of 4-letter M6800 instructions to 3-letter equivalents."""
+        return {
+            # 4-letter syntax -> 3-letter syntax
+            'LDAA': 'LDA',  'LDAB': 'LDB',  'LDAX': 'LDX',  'LDAS': 'LDS',
+            'STAA': 'STA',  'STAB': 'STB',  'STAX': 'STX',  'STAS': 'STS',
+            'ADDA': 'ADD',  'ADDB': 'ADD',  'ADCA': 'ADC',  'ADCB': 'ADC',
+            'SUBA': 'SUB',  'SUBB': 'SUB',  'SBCA': 'SBC',  'SBCB': 'SBC',
+            'ANDA': 'AND',  'ANDB': 'AND',  'EORA': 'EOR',  'EORB': 'EOR',
+            'ORAA': 'ORA',  'ORAB': 'ORB',  'BITA': 'BIT',  'BITB': 'BIT',
+            'CMPA': 'CMP',  'CMPB': 'CMP',  'CPXA': 'CPX',  'CPXB': 'CPX',
+            'TSTA': 'TST',  'TSTB': 'TST',  'CLRA': 'CLR',  'CLRB': 'CLR',
+            'COMA': 'COM',  'COMB': 'COM',  'NEGA': 'NEG',  'NEGB': 'NEG',
+            'INCA': 'INC',  'INCB': 'INC',  'DECA': 'DEC',  'DECB': 'DEC',
+            'ASLA': 'ASL',  'ASLB': 'ASL',  'ASRA': 'ASR',  'ASRB': 'ASR',
+            'LSRA': 'LSR',  'LSRB': 'LSR',  'ROLA': 'ROL',  'ROLB': 'ROL',
+            'RORA': 'ROR',  'RORB': 'ROR',  'PSHA': 'PSH',  'PSHB': 'PSH',
+            'PULA': 'PUL',  'PULB': 'PUL',
+        }
 
 def main():
     """Test function for the assembler."""
