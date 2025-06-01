@@ -49,10 +49,12 @@ class M6800Assembler:
             
             # Clear, Complement, Negate
             'CBA': {'INH': 0x11},
-            # Commented out conflicting inherent instructions that clash with multi-byte instructions
-            # 'CLC': {'INH': 0x0C}, 'CLI': {'INH': 0x0E}, 
-            'CLI': {'INH': 0x0E}, 'CLR': {'DIR': 0x0F, 'EXT': 0x7F, 'IDX': 0x6F, 'INH': {'A': 0x4F, 'B': 0x5F}},
-            # 'CLV': {'INH': 0x0A}, 
+            # --- START CHANGE: UNCOMMENTING INHERENT INSTRUCTIONS ---
+            'CLC': {'INH': 0x0C}, # Clear Carry flag
+            'CLI': {'INH': 0x0E}, # Clear Interrupt Mask
+            'CLR': {'DIR': 0x0F, 'EXT': 0x7F, 'IDX': 0x6F, 'INH': {'A': 0x4F, 'B': 0x5F}},
+            'CLV': {'INH': 0x0A}, # Clear Overflow flag
+            # --- END CHANGE ---
             'CMP': {'IMM': {'A': 0x81, 'B': 0xC1}, 'DIR': {'A': 0x91, 'B': 0xD1}, 
                    'EXT': {'A': 0xB1, 'B': 0xF1}, 'IDX': {'A': 0xA1, 'B': 0xE1}},
             'COM': {'DIR': 0x03, 'EXT': 0x73, 'IDX': 0x63, 'INH': {'A': 0x43, 'B': 0x53}},
@@ -104,9 +106,11 @@ class M6800Assembler:
             'SBA': {'INH': 0x10},
             'SBC': {'IMM': {'A': 0x82, 'B': 0xC2}, 'DIR': {'A': 0x92, 'B': 0xD2}, 
                    'EXT': {'A': 0xB2, 'B': 0xF2}, 'IDX': {'A': 0xA2, 'B': 0xE2}},
-            # Commented out SEI that conflicts with CLR direct (0x0F)
-            # 'SEI': {'INH': 0x0F},
-            'SEC': {'INH': 0x0D}, 'SEV': {'INH': 0x0B},
+            # --- START CHANGE: UNCOMMENTING INHERENT INSTRUCTIONS ---
+            'SEC': {'INH': 0x0D}, # Set Carry flag
+            'SEI': {'INH': 0x0F}, # Set Interrupt Mask
+            'SEV': {'INH': 0x0B}, # Set Overflow flag
+            # --- END CHANGE ---
             'STA': {'DIR': 0x97, 'EXT': 0xB7, 'IDX': 0xA7},
             'STB': {'DIR': 0xD7, 'EXT': 0xF7, 'IDX': 0xE7},
             'STX': {'DIR': 0xDF, 'EXT': 0xFF, 'IDX': 0xEF},
@@ -283,6 +287,10 @@ class M6800Assembler:
             original_line = line.strip()
             clean_line = self._clean_line(line)
             
+            # --- START DEBUG PRINTS (Temporarily add for debugging) ---
+            # print(f"DEBUG_SECOND_PASS: Processing line {line_num}: '{original_line}' (clean: '{clean_line}')")
+            # --- END DEBUG PRINTS ---
+
             if not clean_line:
                 continue
             
@@ -364,6 +372,10 @@ class M6800Assembler:
                     operands = self._parse_instruction_operands(opcode, tokens[1:] if len(tokens) > 1 else [])
                     machine_code = self._assemble_instruction(opcode, operands)
                     
+                    # --- START DEBUG PRINTS (Temporarily add for debugging) ---
+                    # print(f"DEBUG_SECOND_PASS: Line {line_num} ('{original_line.strip()}'): Assembled as {machine_code} (current_address=${self.current_address:04X})")
+                    # --- END DEBUG PRINTS ---
+
                     self.assembled_lines.append({
                         'line': line_num,
                         'address': f"${self.current_address:04X}",
@@ -375,6 +387,7 @@ class M6800Assembler:
                     
                 except ValueError as e:
                     self.errors.append(f"Line {line_num}: Invalid operand for {opcode}: {str(e)}")
+                    # print(f"DEBUG_SECOND_PASS_ERROR: Line {line_num} ('{original_line.strip()}'): ValueError: {e}") # Debug this
                 except OverflowError as e:
                     self.errors.append(f"Line {line_num}: Value out of range for {opcode}: {str(e)}")
                 except KeyError as e:
@@ -410,34 +423,57 @@ class M6800Assembler:
                 
             return machine_code
         
+        # --- START REVISED INHERENT INSTRUCTION HANDLING ---
         if not operands:
-            # Inherent addressing mode
-            if 'INH' in instruction_def:
-                opcode_bytes = instruction_def['INH']
-                if isinstance(opcode_bytes, dict):
-                    # For instructions that have register variants but no register specified,
-                    # default to accumulator A for operations that typically work on A
-                    if opcode in ['INC', 'DEC', 'CLR', 'TST', 'NEG', 'COM', 'ASL', 'ASR', 'LSR', 'ROL', 'ROR']:
-                        if 'A' in opcode_bytes:
-                            opcode_bytes = opcode_bytes['A']
-                        else:
-                            raise ValueError(f"Instruction {opcode} requires register specification")
-                    else:
-                        raise ValueError(f"Instruction {opcode} requires register specification")
+            # This handles instructions like ABA, TAB, TBA, NOP, SWI, INCA, TST, etc.
+            if 'INH' not in instruction_def:
+                # If no operands are provided, but the instruction doesn't have an 'INH' mode, it's an error.
+                raise ValueError(f"Instruction {opcode} requires an explicit operand or addressing mode.")
                 
-                # Handle multi-byte opcodes (M6811 instructions)
-                if isinstance(opcode_bytes, int):
-                    if opcode_bytes > 0xFFFF:  # 3-byte opcode
-                        return [(opcode_bytes >> 16) & 0xFF, (opcode_bytes >> 8) & 0xFF, opcode_bytes & 0xFF]
-                    elif opcode_bytes > 0xFF:  # 2-byte opcode
-                        return [(opcode_bytes >> 8) & 0xFF, opcode_bytes & 0xFF]
-                    else:  # 1-byte opcode
-                        return [opcode_bytes]
-                return [opcode_bytes]
+            opcode_info = instruction_def['INH'] # This will be either an int or a dict.
+            
+            if isinstance(opcode_info, dict):
+                # This path is for instructions where 'INH' is a dict,
+                # meaning they can implicitly operate on A or B, or need selection.
+                # Example: ASL, INC, TST (when written without A/B like 'ASL', 'INC')
+                
+                # Check if it's one of the known implicit accumulator operations
+                if opcode in ['ASL', 'ASR', 'LSR', 'ROL', 'ROR', 
+                              'INC', 'DEC', 'CLR', 'TST', 'NEG', 'COM']:
+                    # These instructions implicitly operate on A if no explicit register is specified.
+                    opcode_byte = opcode_info['A'] # Default to A accumulator
+                elif opcode in ['PSH', 'PUL']:
+                    # PSH/PUL without A/B explicitly given is usually an error in most assemblers
+                    # as it's ambiguous. In M6800, PSHA/PSHB are distinct opcodes.
+                    # This case should ideally be handled by 4-letter mappings or explicit operand.
+                    raise ValueError(f"Instruction {opcode} requires accumulator (A or B) specified for inherent mode (e.g., PSHA).")
+                else:
+                    # This 'else' should ideally not be hit for standard M6800/6811 instructions
+                    # if the instruction_set is complete and correctly structured.
+                    # It would indicate an 'INH' entry is a dict but the opcode isn't handled by the above list.
+                    raise ValueError(f"Ambiguous inherent instruction {opcode} (no explicit register and not recognized implicit A/B op).")
             else:
-                raise ValueError(f"Instruction {opcode} requires operands")
+                # This path handles truly inherent instructions where the 'INH' definition
+                # is a direct integer opcode (e.g., ABA, TAB, TBA, NOP, SWI, DAA, RTI, RTS, etc.).
+                opcode_byte = opcode_info # Direct opcode value (e.g., 0x1B for ABA)
+            
+            # Now, opcode_byte holds the final opcode integer. Build machine code.
+            machine_code = []
+            if isinstance(opcode_byte, int): # Ensure it's an int, not some other type if logic was flawed.
+                if opcode_byte > 0xFFFF:  # 3-byte opcode (e.g. some M6811 prefixed inherent ops)
+                    machine_code.extend([(opcode_byte >> 16) & 0xFF, (opcode_byte >> 8) & 0xFF, opcode_byte & 0xFF])
+                elif opcode_byte > 0xFF:  # 2-byte opcode (e.g. M6811 INY, DEY)
+                    machine_code.extend([(opcode_byte >> 8) & 0xFF, opcode_byte & 0xFF])
+                else:  # 1-byte opcode
+                    machine_code.append(opcode_byte)
+            else:
+                # Should not be reached if opcode_info is always int or dict and handled.
+                raise ValueError(f"Internal assembler error: Inherent opcode for {opcode} has unexpected type {type(opcode_byte)}.")
+            
+            return machine_code
+        # --- END REVISED INHERENT INSTRUCTION HANDLING ---
         
-        # Handle instructions with register specification (like CMP A #$55)
+        # Handle instructions with explicit operands (e.g., LDA #$55, CMP A #$55)
         register = None
         operand_start = 0
         
@@ -450,11 +486,13 @@ class M6800Assembler:
         if operand_start < len(operands):
             operand = ' '.join(operands[operand_start:])
         else:
-            operand = ''
+            operand = '' # Now operand is empty, but it's okay because we're past 'if not operands'
+                         # and this case is for things like "CMP A"
         
-        # Special handling for instructions that might need default register
+        # Special handling for instructions that might need default register (e.g., CMP #$55 -> CMPA #$55)
+        # This occurs when an operand is present, but no explicit register 'A' or 'B' was given.
         if not register and operand and opcode in ['CMP', 'ADC', 'ADD', 'AND', 'BIT', 'EOR', 'ORA', 'SBC', 'SUB']:
-            # Default to accumulator A for comparison and arithmetic operations
+            # Default to accumulator A for comparison and arithmetic operations if no register explicitly specified
             register = 'A'
         
         addressing_mode, parsed_operand = self._parse_operand(operand, opcode)
@@ -469,7 +507,7 @@ class M6800Assembler:
         
         opcode_info = instruction_def[addressing_mode]
         
-        # Handle register-specific opcodes
+        # Handle register-specific opcodes (e.g., ADC A, ADC B)
         if isinstance(opcode_info, dict):
             if 'register' in parsed_operand:
                 reg = parsed_operand['register']
@@ -477,7 +515,11 @@ class M6800Assembler:
                     raise ValueError(f"Register {reg} not supported for {opcode} with {addressing_mode} mode")
                 opcode_byte = opcode_info[reg]
             else:
-                raise ValueError(f"Instruction {opcode} requires register specification")
+                # This should only happen if the instruction's addressing mode is a dict (e.g., ADC)
+                # but no register was parsed (e.g., "ADC #$10" without "ADC A #$10").
+                # The 'register' variable from above already handled this, defaulting to 'A' or setting 'register'.
+                # So this else implies a logical error in prior parsing or non-standard instruction.
+                raise ValueError(f"Instruction {opcode} requires register specification for {addressing_mode} mode.")
         else:
             opcode_byte = opcode_info
         
@@ -491,7 +533,7 @@ class M6800Assembler:
             else:  # 1-byte opcode
                 machine_code.append(opcode_byte)
         else:
-            machine_code.append(opcode_byte)
+            machine_code.append(opcode_byte) # Should not happen if opcode_byte is always int.
         
         # Add operand bytes
         if addressing_mode == 'IMM':
@@ -556,7 +598,10 @@ class M6800Assembler:
             offset = self._parse_number(offset_str) if offset_str else 0
             return 'IDX', {'offset': offset}
         
-        # Register specification for inherent instructions
+        # Register specification for inherent instructions (e.g., 'LDA A' (though LDAA is preferred))
+        # Note: This branch in _parse_operand is crucial for parsing `CMP A #$55` type syntax.
+        # For 'simple' inherent ops like 'ABA', 'TAB', 'NOP', they don't have an 'operand' in assembly
+        # so they hit the 'if not operands:' block in _assemble_instruction/size directly.
         if operand.upper() in ['A', 'B']:
             return 'INH', {'register': operand.upper()}
         
@@ -650,35 +695,49 @@ class M6800Assembler:
         # Special handling for M6811 bit manipulation instructions
         if opcode in ['BSET', 'BCLR', 'BRSET', 'BRCLR']:
             try:
+                # Use the unified parser for bit manipulation instructions
                 parsed_info = self._parse_bit_manipulation_instruction(opcode, operands)
                 return parsed_info['size']
             except ValueError:
-                # Fallback to default size calculation if parsing fails
-                return 3 if opcode in ['BSET', 'BCLR'] else 4
+                # If parsing fails in the first pass (e.g. forward ref for branch target)
+                # still return the expected size. The actual error will be caught in second pass.
+                return 3 if opcode in ['BSET', 'BCLR'] else 4 # BSET/BCLR: 3 bytes, BRSET/BRCLR: 4 bytes
         
+        # --- START REVISED INHERENT INSTRUCTION HANDLING ---
         if not operands:
-            # Inherent instructions - check for multi-byte opcodes
-            if 'INH' in instruction_def:
-                opcode_val = instruction_def['INH']
-                if isinstance(opcode_val, dict):
-                    return 1  # Will be determined by register
+            if 'INH' not in instruction_def:
+                raise ValueError(f"Instruction {opcode} requires an explicit operand or addressing mode.")
                 
-                # Calculate opcode size
-                opcode_size = 1
-                if isinstance(opcode_val, int):
-                    if opcode_val > 0xFFFF:  # 3-byte opcode
-                        opcode_size = 3
-                    elif opcode_val > 0xFF:  # 2-byte opcode
-                        opcode_size = 2
-                    else:  # 1-byte opcode
-                        opcode_size = 1
-                
-                return opcode_size
-            return 1
-        
-        # Handle register specification like CMP A #$55
+            opcode_info = instruction_def['INH']
+            opcode_size = 1 # Default for 1-byte inherent
+            
+            if isinstance(opcode_info, dict):
+                # This branch means the 'INH' definition is a dictionary,
+                # implying it can take an implicit A or B accumulator.
+                if opcode in ['ASL', 'ASR', 'LSR', 'ROL', 'ROR', 
+                              'INC', 'DEC', 'CLR', 'TST', 'NEG', 'COM']:
+                    opcode_size = 1 # These are 1-byte instructions.
+                elif opcode in ['PSH', 'PUL']:
+                    raise ValueError(f"Instruction {opcode} requires accumulator (A or B) specified for inherent mode.")
+                else:
+                    raise ValueError(f"Ambiguous inherent instruction {opcode} (no explicit register for dict-based INH).")
+            else:
+                # Handles truly inherent instructions with direct integer opcodes (1, 2, or 3 bytes)
+                if opcode_info > 0xFFFF:  # 3-byte opcode
+                    opcode_size = 3
+                elif opcode_info > 0xFF:  # 2-byte opcode
+                    opcode_size = 2
+                else:  # 1-byte opcode
+                    opcode_size = 1
+            
+            return opcode_size
+        # --- END REVISED INHERENT INSTRUCTION HANDLING ---
+
+        # Handle instructions with explicit operands (e.g., LDA #$55, CMP A #$55)
+        register = None
         operand_start = 0
         if len(operands) > 0 and operands[0].upper() in ['A', 'B']:
+            register = operands[0].upper()
             operand_start = 1
         
         # Get the actual operand (skip register if present)
@@ -687,9 +746,14 @@ class M6800Assembler:
         else:
             operand = ''
         
+        # Special handling for instructions that might need default register
+        if not register and operand and opcode in ['CMP', 'ADC', 'ADD', 'AND', 'BIT', 'EOR', 'ORA', 'SBC', 'SUB']:
+            # Default to accumulator A for comparison and arithmetic operations
+            register = 'A'
+
         addressing_mode, _ = self._parse_operand(operand, opcode)
         
-        # Get base opcode size
+        # Get base opcode size (could be 1, 2, or 3 bytes for M6811 prefixed ops)
         opcode_size = 1
         if addressing_mode in instruction_def:
             opcode_val = instruction_def[addressing_mode]
@@ -699,9 +763,10 @@ class M6800Assembler:
                 elif opcode_val > 0xFF:  # 2-byte opcode
                     opcode_size = 2
         
+        # Calculate total size based on addressing mode and operand bytes
         size_map = {
-            'INH': opcode_size,
-            'IMM': opcode_size + 1,  # Most immediate are opcode + 1 byte, some are + 2
+            'INH': opcode_size,  # Should have been handled by the 'if not operands' block above, but good as a fallback/check
+            'IMM': opcode_size + 1,  # Most immediate are opcode + 1 byte operand
             'DIR': opcode_size + 1,
             'EXT': opcode_size + 2,
             'IDX': opcode_size + 1,
@@ -710,7 +775,7 @@ class M6800Assembler:
         
         size = size_map.get(addressing_mode, opcode_size)
         
-        # Special cases for 16-bit immediate addressing
+        # Special cases for 16-bit immediate addressing (requires 2 bytes for the value)
         if addressing_mode == 'IMM' and opcode in ['LDX', 'LDS', 'CPX', 'LDD', 'LDY', 'CPD', 'CPY', 'ADDD']:
             size += 1  # Additional byte for 16-bit immediate
             
@@ -1132,22 +1197,44 @@ LABEL NOP     ; Label definition
                     
         return "", clean_line  # No label found
 
+# --- MAIN FUNCTION FOR STANDALONE TESTING (KEEP AS IS) ---
 def main():
-    """Test function for the assembler."""
-    assembler = M6800Assembler()
+    """Main function that supports command line file input."""
+    import sys
     
-    test_code = """
-        ORG     $1000
-START:  LDA     #$55
-        STA     $2000
-        LDB     #$AA
-        STB     $2001
-        BEQ     START
-        END
-    """
-    
-    result = assembler.assemble(test_code)
-    print("Assembly Result:", result)
+    if len(sys.argv) > 1:
+        # File specified on command line
+        filename = sys.argv[1]
+        try:
+            with open(filename, 'r') as f:
+                source_code = f.read()
+            
+            assembler = M6800Assembler()
+            result = assembler.assemble(source_code)
+            print("Assembly Result:", result)
+            
+        except FileNotFoundError:
+            print(f"Error: File '{filename}' not found.")
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error reading file: {e}")
+            sys.exit(1)
+    else:
+        # Run test if no file specified
+        assembler = M6800Assembler()
+        
+        test_code = """
+            ORG     $1000
+    START:  LDA     #$55
+            STA     $2000
+            LDB     #$AA
+            STB     $2001
+            BEQ     START
+            END
+        """
+        
+        result = assembler.assemble(test_code)
+        print("Assembly Result:", result)
 
 if __name__ == "__main__":
-    main() 
+    main()

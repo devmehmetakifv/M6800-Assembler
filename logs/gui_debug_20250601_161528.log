@@ -1,7 +1,0 @@
-16:15:28 - 🚀 M6800 Assembler GUI Debug Log Started
-16:15:28 - 📁 Log file: logs/gui_debug_20250601_161528.log
-16:15:28 - 🚀 DEBUG: AssemblerGUI.__init__() called
-16:15:28 - 🚀 DEBUG: Initializing assembler and simulator
-16:15:28 - 📝 DEBUG: load_example() called
-16:15:28 - 📝 DEBUG: Example code loaded successfully
-16:15:28 - 🚀 DEBUG: GUI initialization completed

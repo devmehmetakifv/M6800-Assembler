@@ -1305,6 +1305,14 @@ class M6800Simulator:
             self._update_subtraction_flags(self.registers['A'], value, result)
             self.registers['PC'] += 2
             
+        elif opcode == 0x91:  # CMPA direct  
+            addr = self.memory[pc + 1]
+            value = self.memory[addr]
+            result = self.registers['A'] - value
+            self.debug_print(f"DEBUG: CMPA direct ${addr:02X}, A=${self.registers['A']:02X}, mem=${value:02X}, result=${result & 0xFF:02X}")
+            self._update_subtraction_flags(self.registers['A'], value, result)
+            self.registers['PC'] += 2
+            
         elif opcode == 0x1C:  # ANDCC immediate (AND with Condition Code register)
             mask = self.memory[pc + 1]
             self.debug_print(f"🔍 DEBUG: ANDCC immediate ${mask:02X}, CC=${self.registers.get('CC', 0):02X}")
