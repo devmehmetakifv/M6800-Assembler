@@ -64,7 +64,7 @@ This project implements a complete Motorola 6800 Assembler with an interactive g
 
 ```
 assembler/
-├── simulator_gui.py     # Main GUI application entry point
+├── main.py              # Main GUI application entry point
 ├── m6800_assembler.py   # Core assembler engine with command line support
 ├── simulator.py         # M6800 processor simulator
 ├── README.md           # This documentation file
@@ -87,7 +87,7 @@ assembler/
 
 1. **Clone or Download the Project**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/devmehmetakifv/M6800-Assembler.git
    cd assembler
    ```
 
@@ -104,7 +104,7 @@ assembler/
 
 4. **Run the GUI Application**
    ```bash
-   python simulator_gui.py
+   python main.py
    ```
 
 5. **Use Command Line Assembler (Optional)**
@@ -118,7 +118,7 @@ assembler/
 
 1. **Launch the GUI Application**
    ```bash
-   python simulator_gui.py
+   python main.py
    ```
 
 2. **Load Example Code**

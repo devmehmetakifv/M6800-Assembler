@@ -2,7 +2,7 @@
 """
 Motorola 6800 Assembler with Interactive Interface
 System Programming Course - Final Project
-Author: [Student Name]
+Author: Software Engineering (English) - GROUP 2
 Date: Spring 2024-2025
 
 Main application entry point with Tkinter GUI interface.
@@ -983,7 +983,7 @@ Features:
 • Execution simulator with step/run modes
 • Memory viewer and register monitoring
 
-Author: [Student Name]
+Author: Software Engineering (English) - GROUP 2
 """
         messagebox.showinfo("About M6800 Assembler", about_text)
         
