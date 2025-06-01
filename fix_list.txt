@@ -1,0 +1,19 @@
+m6800_assembler.py:
+
+[x] Duplicate Label Detection: The current implementation (self.labels[label] = self.current_address) will simply overwrite a label if it's defined multiple times. This means only the last definition will be used, which can lead to hard-to-debug errors for the user. It would be better to raise an error for duplicate label definitions.
+
+[x] TST Instruction Opcode: In _build_instruction_set, TST is defined with a DIR opcode of 0x0D. This is incorrect. 0x0D is the opcode for SEC (Set Carry Flag) in Inherent mode. TST itself does not have a Direct addressing mode in the M6800/M6801/M6811. Its memory addressing modes are Indexed (0x6D) and Extended (0x7D), and Inherent for accumulators A (0x4D) or B (0x5D). This is a critical bug that should be corrected, as it introduces an opcode conflict and incorrect instruction parsing for TST in direct mode.
+
+[x] More Specific Error Messages: While errors are reported, some exceptions like ValueError are caught generically (e.g., "Line X: Exception: ..."). Providing more context (e.g., "Invalid operand for LDA," "Operand out of range for byte") would be beneficial for the user.
+
+simulator.py:
+
+[x] RTI Instruction: The implementation for RTI (Return from Interrupt) at opcode == 0x3B is missing. A full RTI instruction (like RTS) pops the PC, but then also pops the entire Condition Code Register, Accumulators B and A, and the Index Register X (9 bytes in total for M6800, potentially more for M6811 if Y is saved). Currently, it's not present, and it will fall into the "Unknown opcode" path, which is a significant omission for a control instruction. Correction: The simulator does not have 0x3B (RTI) implemented, and it would then fall into the "Unknown opcode" block. This is a missing instruction rather than a logical mistake in an existing one.
+
+[x] Missing M6811 Bit Instructions: The m6811_ref.txt mentions BSET, BCLR, BRSET, BRCLR, which are now fully implemented in both the assembler and simulator. All four instructions support both direct and indexed addressing modes and have been thoroughly tested with all test cases passing.
+
+main.py:
+
+[x] Memory Viewer: The "Memory Viewer" in the "Tools" menu is a placeholder. Implementing a proper, scrollable memory viewer would be a useful addition.
+
+[x] Syntax Highlighting: While not required, adding basic syntax highlighting to the assembly_text editor would greatly improve readability.

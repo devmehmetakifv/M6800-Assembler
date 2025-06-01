@@ -320,7 +320,7 @@ class M6800Simulator:
             self._update_nz_flags(self.registers['A'])
             self.registers['PC'] += 1
             
-        elif opcode == 0x1C:  # ABX (Add B to X)
+        elif opcode == 0x3A:  # ABX (Add B to X)
             result = self.registers['X'] + self.registers['B']
             self.debug_print(f"🔍 DEBUG: ABX, X=${self.registers['X']:04X}, B=${self.registers['B']:02X}, result=${result:04X}")
             self.registers['X'] = result & 0xFFFF
@@ -472,6 +472,44 @@ class M6800Simulator:
             self.debug_print(f"🔍 DEBUG: RTS, returning to ${addr:04X}")
             self.registers['PC'] = addr
             self.registers['SP'] = (sp + 2) & 0xFFFF
+            
+        elif opcode == 0x3B:  # RTI (Return from Interrupt)
+            # RTI restores the complete processor state from stack in specific order:
+            # Stack (top to bottom): CC, B, A, X_high, X_low, PC_high, PC_low
+            sp = self.registers['SP']
+            
+            # Restore CC (Condition Code) register
+            sp = (sp + 1) & 0xFFFF
+            self.registers['CC'] = self.memory[sp]
+            self._unpack_cc_register()  # Update individual flag bits
+            
+            # Restore B accumulator
+            sp = (sp + 1) & 0xFFFF
+            self.registers['B'] = self.memory[sp]
+            
+            # Restore A accumulator  
+            sp = (sp + 1) & 0xFFFF
+            self.registers['A'] = self.memory[sp]
+            
+            # Restore X index register (16-bit, high byte first)
+            sp = (sp + 1) & 0xFFFF
+            x_high = self.memory[sp]
+            sp = (sp + 1) & 0xFFFF
+            x_low = self.memory[sp]
+            self.registers['X'] = (x_high << 8) | x_low
+            
+            # Restore PC (Program Counter, 16-bit, high byte first)
+            sp = (sp + 1) & 0xFFFF
+            pc_high = self.memory[sp]
+            sp = (sp + 1) & 0xFFFF
+            pc_low = self.memory[sp]
+            pc_addr = (pc_high << 8) | pc_low
+            
+            # Update stack pointer and program counter
+            self.registers['SP'] = sp
+            self.registers['PC'] = pc_addr
+            
+            self.debug_print(f"🔍 DEBUG: RTI - restored state: PC=${pc_addr:04X}, A=${self.registers['A']:02X}, B=${self.registers['B']:02X}, X=${self.registers['X']:04X}, CC=${self.registers['CC']:02X}, SP=${self.registers['SP']:04X}")
             
         elif opcode == 0x3D:  # MUL (Multiply A by B)
             result = self.registers['A'] * self.registers['B']
@@ -971,11 +1009,193 @@ class M6800Simulator:
             self._pack_cc_register()
             self.registers['PC'] += 1
             
+        # M6811 Bit Manipulation Instructions
+        elif opcode == 0x12:  # BRSET direct
+            addr = self.memory[pc + 1]
+            mask = self.memory[pc + 2]
+            offset = self.memory[pc + 3]
+            # Convert offset to signed 8-bit value
+            if offset > 127:
+                offset = offset - 256
+            
+            mem_value = self.memory[addr]
+            test_result = mem_value & mask
+            self.debug_print(f"🔍 DEBUG: BRSET direct ${addr:02X}, mask=${mask:02X}, mem=${mem_value:02X}, test=${test_result:02X}")
+            
+            if test_result != 0:  # If any masked bits are set, branch
+                new_pc = (self.registers['PC'] + 4 + offset) & 0xFFFF
+                self.debug_print(f"🔍 DEBUG: BRSET branch taken to ${new_pc:04X}")
+                self.registers['PC'] = new_pc
+            else:
+                self.debug_print("🔍 DEBUG: BRSET branch not taken")
+                self.registers['PC'] += 4
+                
+        elif opcode == 0x13:  # BRCLR direct
+            addr = self.memory[pc + 1]
+            mask = self.memory[pc + 2]
+            offset = self.memory[pc + 3]
+            # Convert offset to signed 8-bit value
+            if offset > 127:
+                offset = offset - 256
+            
+            mem_value = self.memory[addr]
+            test_result = mem_value & mask
+            self.debug_print(f"🔍 DEBUG: BRCLR direct ${addr:02X}, mask=${mask:02X}, mem=${mem_value:02X}, test=${test_result:02X}")
+            
+            if test_result == 0:  # If all masked bits are clear, branch
+                new_pc = (self.registers['PC'] + 4 + offset) & 0xFFFF
+                self.debug_print(f"🔍 DEBUG: BRCLR branch taken to ${new_pc:04X}")
+                self.registers['PC'] = new_pc
+            else:
+                self.debug_print("🔍 DEBUG: BRCLR branch not taken")
+                self.registers['PC'] += 4
+                
+        elif opcode == 0x14:  # BSET direct
+            addr = self.memory[pc + 1]
+            mask = self.memory[pc + 2]
+            
+            old_value = self.memory[addr]
+            new_value = old_value | mask  # Set bits specified by mask
+            self.memory[addr] = new_value
+            self.debug_print(f"🔍 DEBUG: BSET direct ${addr:02X}, mask=${mask:02X}, mem=${old_value:02X} -> ${new_value:02X}")
+            
+            # Update flags based on result
+            self._update_nz_flags(new_value)
+            self.cc_flags['V'] = 0  # BSET always clears V flag
+            self._pack_cc_register()
+            self.registers['PC'] += 3
+            
+        elif opcode == 0x15:  # BCLR direct
+            addr = self.memory[pc + 1]
+            mask = self.memory[pc + 2]
+            
+            old_value = self.memory[addr]
+            new_value = old_value & (~mask)  # Clear bits specified by mask
+            self.memory[addr] = new_value
+            self.debug_print(f"🔍 DEBUG: BCLR direct ${addr:02X}, mask=${mask:02X}, mem=${old_value:02X} -> ${new_value:02X}")
+            
+            # Update flags based on result
+            self._update_nz_flags(new_value)
+            self.cc_flags['V'] = 0  # BCLR always clears V flag
+            self._pack_cc_register()
+            self.registers['PC'] += 3
+            
+        elif opcode == 0x1C:  # BSET indexed
+            offset = self.memory[pc + 1]
+            mask = self.memory[pc + 2]
+            addr = (self.registers['X'] + offset) & 0xFFFF
+            
+            old_value = self.memory[addr]
+            new_value = old_value | mask  # Set bits specified by mask
+            self.memory[addr] = new_value
+            self.debug_print(f"🔍 DEBUG: BSET indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, mask=${mask:02X}, mem=${old_value:02X} -> ${new_value:02X}")
+            
+            # Update flags based on result
+            self._update_nz_flags(new_value)
+            self.cc_flags['V'] = 0  # BSET always clears V flag
+            self._pack_cc_register()
+            self.registers['PC'] += 3
+            
+        elif opcode == 0x1D:  # BCLR indexed
+            offset = self.memory[pc + 1]
+            mask = self.memory[pc + 2]
+            addr = (self.registers['X'] + offset) & 0xFFFF
+            
+            old_value = self.memory[addr]
+            new_value = old_value & (~mask)  # Clear bits specified by mask
+            self.memory[addr] = new_value
+            self.debug_print(f"🔍 DEBUG: BCLR indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, mask=${mask:02X}, mem=${old_value:02X} -> ${new_value:02X}")
+            
+            # Update flags based on result
+            self._update_nz_flags(new_value)
+            self.cc_flags['V'] = 0  # BCLR always clears V flag
+            self._pack_cc_register()
+            self.registers['PC'] += 3
+            
+        elif opcode == 0x1E:  # BRSET indexed
+            offset = self.memory[pc + 1]
+            mask = self.memory[pc + 2]
+            branch_offset = self.memory[pc + 3]
+            # Convert offset to signed 8-bit value
+            if branch_offset > 127:
+                branch_offset = branch_offset - 256
+                
+            addr = (self.registers['X'] + offset) & 0xFFFF
+            mem_value = self.memory[addr]
+            test_result = mem_value & mask
+            self.debug_print(f"🔍 DEBUG: BRSET indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, mask=${mask:02X}, mem=${mem_value:02X}, test=${test_result:02X}")
+            
+            if test_result != 0:  # If any masked bits are set, branch
+                new_pc = (self.registers['PC'] + 4 + branch_offset) & 0xFFFF
+                self.debug_print(f"🔍 DEBUG: BRSET indexed branch taken to ${new_pc:04X}")
+                self.registers['PC'] = new_pc
+            else:
+                self.debug_print("🔍 DEBUG: BRSET indexed branch not taken")
+                self.registers['PC'] += 4
+                
+        elif opcode == 0x1F:  # BRCLR indexed
+            offset = self.memory[pc + 1]
+            mask = self.memory[pc + 2]
+            branch_offset = self.memory[pc + 3]
+            # Convert offset to signed 8-bit value
+            if branch_offset > 127:
+                branch_offset = branch_offset - 256
+                
+            addr = (self.registers['X'] + offset) & 0xFFFF
+            mem_value = self.memory[addr]
+            test_result = mem_value & mask
+            self.debug_print(f"🔍 DEBUG: BRCLR indexed, X=${self.registers['X']:04X}, offset=${offset:02X}, addr=${addr:04X}, mask=${mask:02X}, mem=${mem_value:02X}, test=${test_result:02X}")
+            
+            if test_result == 0:  # If all masked bits are clear, branch
+                new_pc = (self.registers['PC'] + 4 + branch_offset) & 0xFFFF
+                self.debug_print(f"🔍 DEBUG: BRCLR indexed branch taken to ${new_pc:04X}")
+                self.registers['PC'] = new_pc
+            else:
+                self.debug_print("🔍 DEBUG: BRCLR indexed branch not taken")
+                self.registers['PC'] += 4
+                
         # Additional M6800 Instructions
         elif opcode == 0x3F:  # SWI (Software Interrupt)
-            self.debug_print("🔍 DEBUG: SWI - software interrupt, halting")
-            # In a real system this would vector to interrupt handler
-            # For simulation, we'll just halt
+            # SWI saves the complete processor state to stack in specific order:
+            # Save PC (current PC + 1 to point to next instruction)
+            next_pc = (self.registers['PC'] + 1) & 0xFFFF
+            pc_high = (next_pc >> 8) & 0xFF
+            pc_low = next_pc & 0xFF
+            
+            # Save PC (Program Counter, low byte first)
+            self.memory[self.registers['SP']] = pc_low
+            self.registers['SP'] = (self.registers['SP'] - 1) & 0xFFFF
+            self.memory[self.registers['SP']] = pc_high
+            self.registers['SP'] = (self.registers['SP'] - 1) & 0xFFFF
+            
+            # Save X index register (low byte first)
+            self.memory[self.registers['SP']] = self.registers['X'] & 0xFF
+            self.registers['SP'] = (self.registers['SP'] - 1) & 0xFFFF
+            self.memory[self.registers['SP']] = (self.registers['X'] >> 8) & 0xFF
+            self.registers['SP'] = (self.registers['SP'] - 1) & 0xFFFF
+            
+            # Save A accumulator
+            self.memory[self.registers['SP']] = self.registers['A']
+            self.registers['SP'] = (self.registers['SP'] - 1) & 0xFFFF
+            
+            # Save B accumulator
+            self.memory[self.registers['SP']] = self.registers['B']
+            self.registers['SP'] = (self.registers['SP'] - 1) & 0xFFFF
+            
+            # Save CC (Condition Code) register
+            self._pack_cc_register()  # Ensure CC register is up to date
+            self.memory[self.registers['SP']] = self.registers['CC']
+            self.registers['SP'] = (self.registers['SP'] - 1) & 0xFFFF
+            
+            # Set interrupt mask flag
+            self.cc_flags['I'] = 1
+            self._pack_cc_register()
+            
+            self.debug_print(f"🔍 DEBUG: SWI - saved state: PC=${next_pc:04X}, A=${self.registers['A']:02X}, B=${self.registers['B']:02X}, X=${self.registers['X']:04X}, CC=${self.registers['CC']:02X}, SP=${self.registers['SP']:04X}")
+            
+            # In a real system, this would vector to the interrupt handler at a fixed address
+            # For simulation purposes, we'll halt execution
+            self.debug_print("🔍 DEBUG: SWI - software interrupt, halting (in real system would vector to interrupt handler)")
             self.execution_halted = True
             
         elif opcode == 0x8F:  # XGDX (Exchange D and X) - M6811
