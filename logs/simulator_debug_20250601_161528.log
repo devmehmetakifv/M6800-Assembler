@@ -1,0 +1,282 @@
+16:15:28 - 🔄 DEBUG: reset() called
+16:15:28 - 🔄 DEBUG: Backing up program data: 0 bytes
+16:15:28 - 🔄 DEBUG: Reset completed, restoring program data
+16:15:28 - 🔄 DEBUG: No program data to restore
+16:15:40 - 💾 DEBUG: load_program() called with 50 bytes
+16:15:40 - 💾 DEBUG: Program start address: $1000
+16:15:40 - 💾 DEBUG: Loaded program into memory, PC set to $1000
+16:15:42 - ⚡ DEBUG: step() called, halted: False
+16:15:42 - ⚡ DEBUG: Current PC: $1000
+16:15:42 - ⚡ DEBUG: Fetched opcode $86 at PC=$1000
+16:15:42 - 🔍 DEBUG: Executing opcode $86 at PC=$1000
+16:15:42 - 🔍 DEBUG: LDA immediate $42
+16:15:42 - ⚡ DEBUG: Instruction executed, PC: $1000 -> $1002, Count: 1
+16:15:42 - ⚡ DEBUG: step() called, halted: False
+16:15:42 - ⚡ DEBUG: Current PC: $1002
+16:15:42 - ⚡ DEBUG: Fetched opcode $97 at PC=$1002
+16:15:42 - 🔍 DEBUG: Executing opcode $97 at PC=$1002
+16:15:42 - 🔍 DEBUG: STA direct $50, A=$42
+16:15:42 - ⚡ DEBUG: Instruction executed, PC: $1002 -> $1004, Count: 2
+16:15:43 - ⚡ DEBUG: step() called, halted: False
+16:15:43 - ⚡ DEBUG: Current PC: $1004
+16:15:43 - ⚡ DEBUG: Fetched opcode $C6 at PC=$1004
+16:15:43 - 🔍 DEBUG: Executing opcode $C6 at PC=$1004
+16:15:43 - 🔍 DEBUG: LDB immediate $24
+16:15:43 - ⚡ DEBUG: Instruction executed, PC: $1004 -> $1006, Count: 3
+16:15:43 - ⚡ DEBUG: step() called, halted: False
+16:15:43 - ⚡ DEBUG: Current PC: $1006
+16:15:43 - ⚡ DEBUG: Fetched opcode $D7 at PC=$1006
+16:15:43 - 🔍 DEBUG: Executing opcode $D7 at PC=$1006
+16:15:43 - 🔍 DEBUG: STB direct $51, B=$24
+16:15:43 - ⚡ DEBUG: Instruction executed, PC: $1006 -> $1008, Count: 4
+16:15:43 - ⚡ DEBUG: step() called, halted: False
+16:15:43 - ⚡ DEBUG: Current PC: $1008
+16:15:43 - ⚡ DEBUG: Fetched opcode $86 at PC=$1008
+16:15:43 - 🔍 DEBUG: Executing opcode $86 at PC=$1008
+16:15:43 - 🔍 DEBUG: LDA immediate $FF
+16:15:43 - ⚡ DEBUG: Instruction executed, PC: $1008 -> $100A, Count: 5
+16:15:43 - ⚡ DEBUG: step() called, halted: False
+16:15:43 - ⚡ DEBUG: Current PC: $100A
+16:15:43 - ⚡ DEBUG: Fetched opcode $B7 at PC=$100A
+16:15:43 - 🔍 DEBUG: Executing opcode $B7 at PC=$100A
+16:15:43 - 🔍 DEBUG: STA extended $2000, A=$FF
+16:15:43 - ⚡ DEBUG: Instruction executed, PC: $100A -> $100D, Count: 6
+16:15:43 - ⚡ DEBUG: step() called, halted: False
+16:15:43 - ⚡ DEBUG: Current PC: $100D
+16:15:43 - ⚡ DEBUG: Fetched opcode $C6 at PC=$100D
+16:15:43 - 🔍 DEBUG: Executing opcode $C6 at PC=$100D
+16:15:43 - 🔍 DEBUG: LDB immediate $00
+16:15:43 - ⚡ DEBUG: Instruction executed, PC: $100D -> $100F, Count: 7
+16:15:44 - ⚡ DEBUG: step() called, halted: False
+16:15:44 - ⚡ DEBUG: Current PC: $100F
+16:15:44 - ⚡ DEBUG: Fetched opcode $F7 at PC=$100F
+16:15:44 - 🔍 DEBUG: Executing opcode $F7 at PC=$100F
+16:15:44 - 🔍 DEBUG: STB extended $2001, B=$00
+16:15:44 - ⚡ DEBUG: Instruction executed, PC: $100F -> $1012, Count: 8
+16:15:44 - ⚡ DEBUG: step() called, halted: False
+16:15:44 - ⚡ DEBUG: Current PC: $1012
+16:15:44 - ⚡ DEBUG: Fetched opcode $CE at PC=$1012
+16:15:44 - 🔍 DEBUG: Executing opcode $CE at PC=$1012
+16:15:44 - 🔍 DEBUG: LDX immediate $2000
+16:15:44 - ⚡ DEBUG: Instruction executed, PC: $1012 -> $1015, Count: 9
+16:15:44 - ⚡ DEBUG: step() called, halted: False
+16:15:44 - ⚡ DEBUG: Current PC: $1015
+16:15:44 - ⚡ DEBUG: Fetched opcode $A6 at PC=$1015
+16:15:44 - 🔍 DEBUG: Executing opcode $A6 at PC=$1015
+16:15:44 - 🔍 DEBUG: LDA indexed, X=$2000, offset=$00, addr=$2000, value=$FF
+16:15:44 - ⚡ DEBUG: Instruction executed, PC: $1015 -> $1017, Count: 10
+16:15:44 - ⚡ DEBUG: step() called, halted: False
+16:15:44 - ⚡ DEBUG: Current PC: $1017
+16:15:44 - ⚡ DEBUG: Fetched opcode $A7 at PC=$1017
+16:15:44 - 🔍 DEBUG: Executing opcode $A7 at PC=$1017
+16:15:44 - 🔍 DEBUG: STA indexed, X=$2000, offset=$01, addr=$2001, A=$FF
+16:15:44 - ⚡ DEBUG: Instruction executed, PC: $1017 -> $1019, Count: 11
+16:15:44 - ⚡ DEBUG: step() called, halted: False
+16:15:44 - ⚡ DEBUG: Current PC: $1019
+16:15:44 - ⚡ DEBUG: Fetched opcode $86 at PC=$1019
+16:15:44 - 🔍 DEBUG: Executing opcode $86 at PC=$1019
+16:15:44 - 🔍 DEBUG: LDA immediate $10
+16:15:44 - ⚡ DEBUG: Instruction executed, PC: $1019 -> $101B, Count: 12
+16:15:45 - ⚡ DEBUG: step() called, halted: False
+16:15:45 - ⚡ DEBUG: Current PC: $101B
+16:15:45 - ⚡ DEBUG: Fetched opcode $C6 at PC=$101B
+16:15:45 - 🔍 DEBUG: Executing opcode $C6 at PC=$101B
+16:15:45 - 🔍 DEBUG: LDB immediate $05
+16:15:45 - ⚡ DEBUG: Instruction executed, PC: $101B -> $101D, Count: 13
+16:15:45 - ⚡ DEBUG: step() called, halted: False
+16:15:45 - ⚡ DEBUG: Current PC: $101D
+16:15:45 - ⚡ DEBUG: Fetched opcode $97 at PC=$101D
+16:15:45 - 🔍 DEBUG: Executing opcode $97 at PC=$101D
+16:15:45 - 🔍 DEBUG: STA direct $52, A=$10
+16:15:45 - ⚡ DEBUG: Instruction executed, PC: $101D -> $101F, Count: 14
+16:15:45 - ⚡ DEBUG: step() called, halted: False
+16:15:45 - ⚡ DEBUG: Current PC: $101F
+16:15:45 - ⚡ DEBUG: Fetched opcode $81 at PC=$101F
+16:15:45 - 🔍 DEBUG: Executing opcode $81 at PC=$101F
+16:15:45 - 🔍 DEBUG: CMPA immediate $15, A=10, result=FB
+16:15:45 - ⚡ DEBUG: Instruction executed, PC: $101F -> $1021, Count: 15
+16:15:45 - ⚡ DEBUG: step() called, halted: False
+16:15:45 - ⚡ DEBUG: Current PC: $1021
+16:15:45 - ⚡ DEBUG: Fetched opcode $27 at PC=$1021
+16:15:45 - 🔍 DEBUG: Executing opcode $27 at PC=$1021
+16:15:45 - 🔍 DEBUG: BEQ relative offset=2, Z flag=0
+16:15:45 - 🔍 DEBUG: BEQ not taking branch
+16:15:45 - ⚡ DEBUG: Instruction executed, PC: $1021 -> $1023, Count: 16
+16:15:45 - ⚡ DEBUG: step() called, halted: False
+16:15:45 - ⚡ DEBUG: Current PC: $1023
+16:15:45 - ⚡ DEBUG: Fetched opcode $20 at PC=$1023
+16:15:45 - 🔍 DEBUG: Executing opcode $20 at PC=$1023
+16:15:45 - 🔍 DEBUG: BRA relative offset=6, target=$102B
+16:15:45 - ⚡ DEBUG: Instruction executed, PC: $1023 -> $102B, Count: 17
+16:15:45 - ⚡ DEBUG: step() called, halted: False
+16:15:45 - ⚡ DEBUG: Current PC: $102B
+16:15:45 - ⚡ DEBUG: Fetched opcode $86 at PC=$102B
+16:15:45 - 🔍 DEBUG: Executing opcode $86 at PC=$102B
+16:15:45 - 🔍 DEBUG: LDA immediate $00
+16:15:45 - ⚡ DEBUG: Instruction executed, PC: $102B -> $102D, Count: 18
+16:15:46 - ⚡ DEBUG: step() called, halted: False
+16:15:46 - ⚡ DEBUG: Current PC: $102D
+16:15:46 - ⚡ DEBUG: Fetched opcode $97 at PC=$102D
+16:15:46 - 🔍 DEBUG: Executing opcode $97 at PC=$102D
+16:15:46 - 🔍 DEBUG: STA direct $53, A=$00
+16:15:46 - ⚡ DEBUG: Instruction executed, PC: $102D -> $102F, Count: 19
+16:15:46 - ⚡ DEBUG: step() called, halted: False
+16:15:46 - ⚡ DEBUG: Current PC: $102F
+16:15:46 - ⚡ DEBUG: Fetched opcode $16 at PC=$102F
+16:15:46 - 🔍 DEBUG: Executing opcode $16 at PC=$102F
+16:15:46 - ❌ DEBUG: Unknown opcode $16 at PC=$102F - halting execution
+16:15:46 - ⚡ DEBUG: Instruction executed, PC: $102F -> $102F, Count: 20
+16:15:48 - 🔄 DEBUG: reset() called
+16:15:48 - 🔄 DEBUG: Backing up program data: 50 bytes
+16:15:48 - 🔄 DEBUG: Reset completed, restoring program data
+16:15:48 - 🔄 DEBUG: Restored program, PC set to $1000
+16:15:48 - 🔄 DEBUG: Reloaded 50 bytes into memory
+16:15:48 - 💾 DEBUG: load_program() called with 50 bytes
+16:15:48 - 💾 DEBUG: Program start address: $1000
+16:15:48 - 💾 DEBUG: Loaded program into memory, PC set to $1000
+16:15:49 - 🚀 DEBUG: run() called, max_instructions: 1000
+16:15:49 - 🚀 DEBUG: Run loop iteration 1
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $1000
+16:15:49 - ⚡ DEBUG: Fetched opcode $86 at PC=$1000
+16:15:49 - 🔍 DEBUG: Executing opcode $86 at PC=$1000
+16:15:49 - 🔍 DEBUG: LDA immediate $42
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $1000 -> $1002, Count: 1
+16:15:49 - 🚀 DEBUG: Run loop iteration 2
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $1002
+16:15:49 - ⚡ DEBUG: Fetched opcode $97 at PC=$1002
+16:15:49 - 🔍 DEBUG: Executing opcode $97 at PC=$1002
+16:15:49 - 🔍 DEBUG: STA direct $50, A=$42
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $1002 -> $1004, Count: 2
+16:15:49 - 🚀 DEBUG: Run loop iteration 3
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $1004
+16:15:49 - ⚡ DEBUG: Fetched opcode $C6 at PC=$1004
+16:15:49 - 🔍 DEBUG: Executing opcode $C6 at PC=$1004
+16:15:49 - 🔍 DEBUG: LDB immediate $24
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $1004 -> $1006, Count: 3
+16:15:49 - 🚀 DEBUG: Run loop iteration 4
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $1006
+16:15:49 - ⚡ DEBUG: Fetched opcode $D7 at PC=$1006
+16:15:49 - 🔍 DEBUG: Executing opcode $D7 at PC=$1006
+16:15:49 - 🔍 DEBUG: STB direct $51, B=$24
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $1006 -> $1008, Count: 4
+16:15:49 - 🚀 DEBUG: Run loop iteration 5
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $1008
+16:15:49 - ⚡ DEBUG: Fetched opcode $86 at PC=$1008
+16:15:49 - 🔍 DEBUG: Executing opcode $86 at PC=$1008
+16:15:49 - 🔍 DEBUG: LDA immediate $FF
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $1008 -> $100A, Count: 5
+16:15:49 - 🚀 DEBUG: Run loop iteration 6
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $100A
+16:15:49 - ⚡ DEBUG: Fetched opcode $B7 at PC=$100A
+16:15:49 - 🔍 DEBUG: Executing opcode $B7 at PC=$100A
+16:15:49 - 🔍 DEBUG: STA extended $2000, A=$FF
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $100A -> $100D, Count: 6
+16:15:49 - 🚀 DEBUG: Run loop iteration 7
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $100D
+16:15:49 - ⚡ DEBUG: Fetched opcode $C6 at PC=$100D
+16:15:49 - 🔍 DEBUG: Executing opcode $C6 at PC=$100D
+16:15:49 - 🔍 DEBUG: LDB immediate $00
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $100D -> $100F, Count: 7
+16:15:49 - 🚀 DEBUG: Run loop iteration 8
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $100F
+16:15:49 - ⚡ DEBUG: Fetched opcode $F7 at PC=$100F
+16:15:49 - 🔍 DEBUG: Executing opcode $F7 at PC=$100F
+16:15:49 - 🔍 DEBUG: STB extended $2001, B=$00
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $100F -> $1012, Count: 8
+16:15:49 - 🚀 DEBUG: Run loop iteration 9
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $1012
+16:15:49 - ⚡ DEBUG: Fetched opcode $CE at PC=$1012
+16:15:49 - 🔍 DEBUG: Executing opcode $CE at PC=$1012
+16:15:49 - 🔍 DEBUG: LDX immediate $2000
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $1012 -> $1015, Count: 9
+16:15:49 - 🚀 DEBUG: Run loop iteration 10
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $1015
+16:15:49 - ⚡ DEBUG: Fetched opcode $A6 at PC=$1015
+16:15:49 - 🔍 DEBUG: Executing opcode $A6 at PC=$1015
+16:15:49 - 🔍 DEBUG: LDA indexed, X=$2000, offset=$00, addr=$2000, value=$FF
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $1015 -> $1017, Count: 10
+16:15:49 - 🚀 DEBUG: Run loop iteration 11
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $1017
+16:15:49 - ⚡ DEBUG: Fetched opcode $A7 at PC=$1017
+16:15:49 - 🔍 DEBUG: Executing opcode $A7 at PC=$1017
+16:15:49 - 🔍 DEBUG: STA indexed, X=$2000, offset=$01, addr=$2001, A=$FF
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $1017 -> $1019, Count: 11
+16:15:49 - 🚀 DEBUG: Run loop iteration 12
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $1019
+16:15:49 - ⚡ DEBUG: Fetched opcode $86 at PC=$1019
+16:15:49 - 🔍 DEBUG: Executing opcode $86 at PC=$1019
+16:15:49 - 🔍 DEBUG: LDA immediate $10
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $1019 -> $101B, Count: 12
+16:15:49 - 🚀 DEBUG: Run loop iteration 13
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $101B
+16:15:49 - ⚡ DEBUG: Fetched opcode $C6 at PC=$101B
+16:15:49 - 🔍 DEBUG: Executing opcode $C6 at PC=$101B
+16:15:49 - 🔍 DEBUG: LDB immediate $05
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $101B -> $101D, Count: 13
+16:15:49 - 🚀 DEBUG: Run loop iteration 14
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $101D
+16:15:49 - ⚡ DEBUG: Fetched opcode $97 at PC=$101D
+16:15:49 - 🔍 DEBUG: Executing opcode $97 at PC=$101D
+16:15:49 - 🔍 DEBUG: STA direct $52, A=$10
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $101D -> $101F, Count: 14
+16:15:49 - 🚀 DEBUG: Run loop iteration 15
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $101F
+16:15:49 - ⚡ DEBUG: Fetched opcode $81 at PC=$101F
+16:15:49 - 🔍 DEBUG: Executing opcode $81 at PC=$101F
+16:15:49 - 🔍 DEBUG: CMPA immediate $15, A=10, result=FB
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $101F -> $1021, Count: 15
+16:15:49 - 🚀 DEBUG: Run loop iteration 16
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $1021
+16:15:49 - ⚡ DEBUG: Fetched opcode $27 at PC=$1021
+16:15:49 - 🔍 DEBUG: Executing opcode $27 at PC=$1021
+16:15:49 - 🔍 DEBUG: BEQ relative offset=2, Z flag=0
+16:15:49 - 🔍 DEBUG: BEQ not taking branch
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $1021 -> $1023, Count: 16
+16:15:49 - 🚀 DEBUG: Run loop iteration 17
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $1023
+16:15:49 - ⚡ DEBUG: Fetched opcode $20 at PC=$1023
+16:15:49 - 🔍 DEBUG: Executing opcode $20 at PC=$1023
+16:15:49 - 🔍 DEBUG: BRA relative offset=6, target=$102B
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $1023 -> $102B, Count: 17
+16:15:49 - 🚀 DEBUG: Run loop iteration 18
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $102B
+16:15:49 - ⚡ DEBUG: Fetched opcode $86 at PC=$102B
+16:15:49 - 🔍 DEBUG: Executing opcode $86 at PC=$102B
+16:15:49 - 🔍 DEBUG: LDA immediate $00
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $102B -> $102D, Count: 18
+16:15:49 - 🚀 DEBUG: Run loop iteration 19
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $102D
+16:15:49 - ⚡ DEBUG: Fetched opcode $97 at PC=$102D
+16:15:49 - 🔍 DEBUG: Executing opcode $97 at PC=$102D
+16:15:49 - 🔍 DEBUG: STA direct $53, A=$00
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $102D -> $102F, Count: 19
+16:15:49 - 🚀 DEBUG: Run loop iteration 20
+16:15:49 - ⚡ DEBUG: step() called, halted: False
+16:15:49 - ⚡ DEBUG: Current PC: $102F
+16:15:49 - ⚡ DEBUG: Fetched opcode $16 at PC=$102F
+16:15:49 - 🔍 DEBUG: Executing opcode $16 at PC=$102F
+16:15:49 - ❌ DEBUG: Unknown opcode $16 at PC=$102F - halting execution
+16:15:49 - ⚡ DEBUG: Instruction executed, PC: $102F -> $102F, Count: 20
+16:15:49 - 🚀 DEBUG: Run loop iteration 21
+16:15:49 - ⚡ DEBUG: step() called, halted: True
+16:15:49 - ⚡ DEBUG: Already halted, returning False
+16:15:49 - 🚀 DEBUG: Run completed, executed 20 instructions

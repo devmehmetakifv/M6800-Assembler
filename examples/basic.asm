@@ -35,13 +35,13 @@ START   LDA     #$42     ; Load accumulator A with immediate value $42
 
 EQUAL   LDA     #$01     ; Load success code
         STA     $53      ; Store success indicator
-        BRA     END      ; Branch to end
+        BRA     FINISH   ; Branch to finish
 
 NOTEQUAL LDA    #$00     ; Load failure code
         STA     $53      ; Store failure indicator
 
 ; Register transfer operations
-END     TAB              ; Transfer A to B
+FINISH  TAB              ; Transfer A to B
         TBA              ; Transfer B to A
         
 ; Clear and test operations

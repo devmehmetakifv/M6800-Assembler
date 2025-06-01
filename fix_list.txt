@@ -1,32 +1,72 @@
-Critical Issues (Must Address for Robust Demo)
+CRITICAL ISSUES (MUST FIX for a successful demo)
+These issues directly impact the correctness of instruction execution in the simulator, especially for common M6800 operations, and will cause your provided examples to fail or behave incorrectly.
 
-1. Incomplete Simulator Instruction Set (Most Critical): While the m6800_assembler.py supports a very comprehensive set of M6800, M6801, and M6811 instructions (including various addressing modes for each), the simulator.py only implements a subset of these. Many fundamental M6800 instructions, even though they have opcodes and are handled by the assembler, are not present in the _execute_instruction method of the simulator for all their supported addressing modes.
+1. Simulator Opcode Ambiguity / Overloading (simulator.py)
 
--> Examples of missing simulator implementations (for instructions correctly handled by assembler):
+-> Problem: The Motorola 6800 instruction set reuses certain single-byte opcodes for multiple distinct instructions, where the differentiation depends on the addressing mode and whether an operand follows. For example, 0x0F can be SEI (Inherent, 1 byte) or CLR (Direct, 2 bytes). Your _execute_instruction method uses a simple if/elif chain. The first elif block that matches the opcode will execute, even if the instruction is meant to be the other form.
+-> Impact: Your examples/basic.asm and examples/fibonacci.asm will fail to execute correctly due to these conflicts.
+----> 0x00: BRK vs. NEG direct (Currently, BRK always executes).
+----> 0x0A: CLV vs. DEC direct (Currently, CLV always executes).
+----> 0x0C: CLC vs. INC direct (Currently, CLC always executes).
+----> 0x0F: SEI vs. CLR direct (Currently, SEI always executes).
+-> Solution: For these conflicting opcodes, the simulator needs to check if the next byte(s) are present and correspond to the operand length of the longer instruction. Prioritize the multi-byte (memory) form if the bytes are available.
+--> For 0x00 (BRK/NEG direct):
+---->  Assembler (m6800_assembler.py): M6800's BRK is typically 0x3F (same as SWI). It's a common mistake to map BRK to 0x00 in non-standard assemblers. Since 0x00 is also NEG direct, it's best to fix this.
+--------> Change BRK: {'INH': 0x00} to BRK: {'INH': 0x3F} in _build_instruction_set. (This aligns BRK with SWI and frees 0x00).
+---->  Simulator (simulator.py):
+--------> Remove the elif opcode == 0x00: # BRK block entirely (lines 222-225).
+--------> Ensure elif opcode == 0x3F: # SWI correctly handles the BRK functionality.
+--------> The NEG direct implementation (currently at line 2653, but you'll reorder it) correctly uses 0x00 and will then be the only instruction starting with 0x00.
+--> For 0x0A (CLV/DEC direct), 0x0C (CLC/INC direct), 0x0F (SEI/CLR direct):
+----> Reorder _execute_instruction blocks: Place the direct/extended/indexed memory operation blocks (e.g., DEC direct at line 2741) before their corresponding inherent/single-byte flag-setting counterparts (e.g., CLV at line 242).
+----> Add a length check (optional but robust): For perfect disambiguation, you could check if pc + 1 (or pc + 2) is valid and the byte looks like an address/operand. However, simply reordering based on instruction length (longer first) is often sufficient given M6800 opcode patterns, as the assembler would never generate a 1-byte instruction if the 2-byte form is intended.
 
-(*) All ADC (Add with Carry) modes.
-(*) Most ADD modes (only IMM for A/B are in sim, not DIR, EXT, IDX).
-(*) All AND, BIT, EOR, ORA, SBC, SUB (except SUBA DIR, SUBB EXT) modes.
-(*) Most ASL, ASR, LSR, ROL, ROR modes (only accumulator INH are in sim, not DIR, EXT, IDX).
-(*) CLR, COM, NEG, INC, DEC (only accumulator INH are in sim, not DIR, EXT, IDX).
-(*) CBA (Compare A with B).
-(*) CLC, CLI, SEI, SEC, SEV (Condition Code operations).
-(*) TAP, TPA (Transfer A to/from CC).
-(*) JSR (Jump to Subroutine - both EXT and IDX modes, defined in assembler but missing in simulator).
-(*) BSR (Branch to Subroutine - Relative mode, defined in assembler but missing in simulator).
-(*) TST (Test - DIR, EXT, IDX modes for memory, assembler correctly removed DIR but has EXT/IDX/INH for A/B, simulator only has NEGA/B for inherent).
+2. Simulator Flag Handling - Subtraction Overflow (simulator.py)
 
-1.2. CPD Instruction in Simulator (M6811): The assembler defines CPD (Compare D register) with opcode 0x1A83 (for immediate) and others. However, the simulator only has 0x18 as a prefix handler for M6811 extended instructions, not 0x1A. So, CPD instructions will currently be seen as "Unknown opcode".
-Recommendation: Add a elif opcode == 0x1A: block to _execute_instruction to handle CPD and other potential 0x1A prefixed instructions.
+-> Problem: The V (Overflow) flag is not correctly updated for SUB and SBC instructions. Your _update_arithmetic_flags correctly calculates V for addition, but subtraction requires a different logic.
+-> Impact: Any program using SUB or SBC where overflow could occur will have incorrect V flag state.
+-> Solution:
+----> Create a new helper function _update_subtraction_flags(minuend, subtrahend, result, borrow_in=0) that calculates V and C (which is borrow for subtraction) specifically for subtraction.
+----> The V flag for subtraction (A - B) is set if (A_sign XOR B_sign) AND (A_sign XOR Result_sign).
+----> Call this new function from all SUB and SBC instruction implementations.
 
+3. Simulator Flag Handling - MUL Instruction (simulator.py)
 
-2. Non-Critical / Logical Issues (Good to Refine)
+-> Problem: The C (Carry) flag is incorrectly set by the MUL instruction. M6811 MUL clears the C flag.
+-> Impact: Subsequent instructions relying on the C flag after a MUL will have incorrect behavior.
+-> Solution: In the elif opcode == 0x3D: # MUL block (line 571):
+----> Change self.cc_flags['C'] = 1 if (self.registers['B'] & 0x80) else 0
+----> To: self.cc_flags['C'] = 0
+----> Also, ensure N and Z flags are updated for the 16-bit D result: self._update_nz_flags(result). (This already exists but confirms it's correct for MUL).
+----> And V is cleared: self.cc_flags['V'] = 0.
+----> Finally, ensure _pack_cc_register() is called.
 
-2.1. Assembler Parsing Consistency for Bit Manipulation Instructions:  In _first_pass and _second_pass, there's custom logic to parse operands for BSET, BCLR, BRSET, BRCLR (Lines 283-318 and 446-480). This logic is repeated and bypasses the general _parse_operand function.
-Recommendation: Refactor _parse_operand to handle these multi-part operands or create a dedicated helper for them that is called from _assemble_instruction and _calculate_instruction_size.
+4. Simulator Flag Handling - LSR Instructions (simulator.py)
+-> Problem: The V (Overflow) flag is incorrectly set by LSR (Logical Shift Right) instructions. M6800 LSR always clears the V flag.
+-> Impact: Incorrect V flag state for programs using LSR.
+-> Solution: In all LSR instruction blocks (LSRA, LSRB, LSR extended, LSR indexed), ensure self.cc_flags['V'] = 0.
+----> For example, in elif opcode == 0x44: # LSRA (line 2402):
+--------> Change self.cc_flags['V'] = 1 if (old_a & 0x80) else 0
+--------> To: self.cc_flags['V'] = 0
+----> Apply this same change to LSRB (0x54), LSR extended (0x74), and LSR indexed (0x64).
 
-2.2. H (Half-Carry) Flag Handling:  The H flag (bit 5 in CC) is included in _pack_cc_register and _unpack_cc_register, and DAA uses it, but no instruction explicitly sets or clears the H flag during arithmetic operations (e.g., ADD, ADC).
-Recommendation: For a truly accurate simulator, H should be updated by relevant arithmetic instructions (like ADD, ADC, ABA) based on the carry from bit 3 to bit 4.
+HIGH PRIORITY (Recommended for robustness and grading)
+These issues are less critical for basic functionality but improve accuracy and address points from your original fix_list.txt more completely.
 
-2.3. I (Interrupt Mask) Flag Handling: Similar to H, the I flag (bit 4 in CC) is included but not actively manipulated by instructions like SEI (Set Interrupt Mask) or CLI (Clear Interrupt Mask), which the assembler supports. SWI sets it, but that's the only place.
-Recommendation: Implement SEI and CLI in _execute_instruction to correctly set/clear cc_flags['I'].
+1. Simulator Half-Carry Flag (H) Update for ADD/ADC (simulator.py)
+-> Problem: While _update_half_carry_flag exists, it's not explicitly called by all ADD/ADC implementations. The combined _update_arithmetic_flags is the correct approach.
+-> Impact: The H flag (used for DAA) might not be accurate after some additions.
+-> Solution: Ensure all ADD and ADC implementations call self._update_arithmetic_flags(operand1, operand2, result, carry_in) to set the H flag (and others) correctly. It looks like you've done this for most ADD/ADC modes now, but double-check that _update_arithmetic_flags is indeed called for all ADD and ADC modes.
+
+MEDIUM PRIORITY (Good to refine for long-term maintainability/perfection)
+These issues relate to code structure, potential minor inefficiencies, or very subtle edge cases.
+
+1. Assembler Parsing Consistency for Bit Manipulation Instructions (m6800_assembler.py)
+-> Problem: The parsing logic for BSET, BCLR, BRSET, BRCLR is still largely duplicated within _calculate_instruction_size (lines 333-350) and _assemble_instruction (lines 444-495). While _parse_bit_manipulation_operands helps with the string splitting, the interpretation of those parsed parts (addressing mode, offset, mask, branch target) is repeated.
+-> Impact: Code duplication, harder to maintain if logic for these instructions changes.
+-> Solution: Refactor _parse_operand to be more general. It should ideally be able to return a dictionary describing the parsed operand(s) for any instruction type, including the bit manipulation ones. Then, _assemble_instruction and _calculate_instruction_size would simply consume this unified parsed data. This is a significant refactoring but would make the assembler more elegant. For a final project, it's not strictly necessary, but it's a good code quality improvement.
+
+2. Assembler Label Parsing Logic (m6800_assembler.py)
+-> Problem: The label parsing logic is duplicated in _first_pass (lines 211-254) and _second_pass (lines 317-343).
+-> Impact: Code duplication.
+-> Solution: Extract the label parsing into a helper method, say _parse_line_for_label(clean_line, line_num) -> (label, remaining_line). Call this helper at the beginning of both passes.

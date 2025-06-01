@@ -564,10 +564,10 @@ class AssemblerGUI:
                 messagebox.showwarning("No Program", "Please load a program first using 'Load Program' button")
                 return
                 
-            self.debug_print(f"👟 DEBUG: Program loaded, checking halt state: {self.simulator.is_halted()}")
+            self.debug_print(f"👟 DEBUG: Program loaded, checking halt state: {self.simulator.execution_halted}")
             
             # Check if execution is already halted
-            if self.simulator.is_halted():
+            if self.simulator.execution_halted:
                 self.debug_print("⚠️ DEBUG: Execution already halted, showing info")
                 messagebox.showinfo("Execution Complete", "Program execution has completed. Use Reset to restart.")
                 return
@@ -588,7 +588,7 @@ class AssemblerGUI:
             else:
                 self.status_var.set("Execution halted")
                 self.debug_print("👟 DEBUG: Step failed - execution halted")
-                if self.simulator.is_halted():
+                if self.simulator.execution_halted:
                     messagebox.showinfo("Execution Complete", "Program execution has completed.")
         except Exception as e:
             self.debug_print(f"❌ DEBUG: Exception in step_execution(): {e}")
@@ -604,10 +604,10 @@ class AssemblerGUI:
                 messagebox.showwarning("No Program", "Please load a program first using 'Load Program' button")
                 return
                 
-            self.debug_print(f"🏃 DEBUG: Program loaded, checking halt state: {self.simulator.is_halted()}")
+            self.debug_print(f"🏃 DEBUG: Program loaded, checking halt state: {self.simulator.execution_halted}")
             
             # Check if execution is already halted
-            if self.simulator.is_halted():
+            if self.simulator.execution_halted:
                 self.debug_print("⚠️ DEBUG: Already halted for run, showing info")
                 messagebox.showinfo("Execution Complete", "Program execution has completed. Use Reset to restart.")
                 return

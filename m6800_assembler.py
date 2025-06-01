@@ -49,8 +49,11 @@ class M6800Assembler:
             
             # Clear, Complement, Negate
             'CBA': {'INH': 0x11},
-            'CLC': {'INH': 0x0C}, 'CLI': {'INH': 0x0E}, 'CLR': {'DIR': 0x0F, 'EXT': 0x7F, 'IDX': 0x6F, 'INH': {'A': 0x4F, 'B': 0x5F}},
-            'CLV': {'INH': 0x0A}, 'CMP': {'IMM': {'A': 0x81, 'B': 0xC1}, 'DIR': {'A': 0x91, 'B': 0xD1}, 
+            # Commented out conflicting inherent instructions that clash with multi-byte instructions
+            # 'CLC': {'INH': 0x0C}, 'CLI': {'INH': 0x0E}, 
+            'CLI': {'INH': 0x0E}, 'CLR': {'DIR': 0x0F, 'EXT': 0x7F, 'IDX': 0x6F, 'INH': {'A': 0x4F, 'B': 0x5F}},
+            # 'CLV': {'INH': 0x0A}, 
+            'CMP': {'IMM': {'A': 0x81, 'B': 0xC1}, 'DIR': {'A': 0x91, 'B': 0xD1}, 
                    'EXT': {'A': 0xB1, 'B': 0xF1}, 'IDX': {'A': 0xA1, 'B': 0xE1}},
             'COM': {'DIR': 0x03, 'EXT': 0x73, 'IDX': 0x63, 'INH': {'A': 0x43, 'B': 0x53}},
             'NEG': {'DIR': 0x00, 'EXT': 0x70, 'IDX': 0x60, 'INH': {'A': 0x40, 'B': 0x50}},
@@ -101,7 +104,9 @@ class M6800Assembler:
             'SBA': {'INH': 0x10},
             'SBC': {'IMM': {'A': 0x82, 'B': 0xC2}, 'DIR': {'A': 0x92, 'B': 0xD2}, 
                    'EXT': {'A': 0xB2, 'B': 0xF2}, 'IDX': {'A': 0xA2, 'B': 0xE2}},
-            'SEC': {'INH': 0x0D}, 'SEI': {'INH': 0x0F}, 'SEV': {'INH': 0x0B},
+            # Commented out SEI that conflicts with CLR direct (0x0F)
+            # 'SEI': {'INH': 0x0F},
+            'SEC': {'INH': 0x0D}, 'SEV': {'INH': 0x0B},
             'STA': {'DIR': 0x97, 'EXT': 0xB7, 'IDX': 0xA7},
             'STB': {'DIR': 0xD7, 'EXT': 0xF7, 'IDX': 0xE7},
             'STX': {'DIR': 0xDF, 'EXT': 0xFF, 'IDX': 0xEF},
@@ -121,7 +126,7 @@ class M6800Assembler:
             'WAI': {'INH': 0x3E},
             
             # Break/Halt instruction
-            'BRK': {'INH': 0x00},  # Added BRK instruction
+            'BRK': {'INH': 0x3F},  # Fixed BRK instruction to align with SWI
             
             # M6801/M6811 Specific Instructions (Enhanced support)
             'LSRD': {'INH': 0x04},     # Logical shift right D register
@@ -208,53 +213,20 @@ class M6800Assembler:
             if not clean_line:
                 continue
                 
-            # Check for label with colon first
-            if ':' in clean_line:
-                parts = clean_line.split(':', 1)
-                label = parts[0].strip()
-                if self._is_valid_label(label):
-                    # Check for duplicate label definition
-                    if label in self.labels:
-                        self.errors.append(f"Line {line_num}: Duplicate label '{label}' - already defined at address ${self.labels[label]:04X}")
-                    else:
-                        self.labels[label] = self.current_address
-                    clean_line = parts[1].strip() if len(parts) > 1 else ""
-            else:
-                # Check for label without colon (label followed by instruction or standalone)
-                tokens = clean_line.split()
-                if len(tokens) >= 2:
-                    potential_label = tokens[0]
-                    potential_instruction = tokens[1].upper()
-                    
-                    # If first token looks like a label and second token is a known instruction
-                    # BUT first token is NOT itself an instruction (instructions take priority)
-                    if (self._is_valid_label(potential_label) and 
-                        potential_label.upper() not in self.instruction_set and
-                        potential_label.upper() not in self.four_letter_mapping and
-                        (potential_instruction in self.instruction_set or 
-                         potential_instruction in self.four_letter_mapping or
-                         potential_instruction in ['ORG', 'END', '.ORG', '.END', '.BYTE'])):
-                        
-                        # Check for duplicate label definition
-                        if potential_label in self.labels:
-                            self.errors.append(f"Line {line_num}: Duplicate label '{potential_label}' - already defined at address ${self.labels[potential_label]:04X}")
-                        else:
-                            self.labels[potential_label] = self.current_address
-                        clean_line = ' '.join(tokens[1:])  # Remove label from line
-                elif len(tokens) == 1:
-                    # Check for standalone label
-                    potential_label = tokens[0]
-                    if self._is_valid_label(potential_label):
-                        # Check for duplicate label definition
-                        if potential_label in self.labels:
-                            self.errors.append(f"Line {line_num}: Duplicate label '{potential_label}' - already defined at address ${self.labels[potential_label]:04X}")
-                        else:
-                            self.labels[potential_label] = self.current_address
-                        clean_line = ""  # No instruction to process
+            # Use unified label parsing
+            label, clean_line = self._parse_line_for_label(clean_line, line_num)
+            
+            # If we found a label, add it to the symbol table
+            if label:
+                # Check for duplicate label definition
+                if label in self.labels:
+                    self.errors.append(f"Line {line_num}: Duplicate label '{label}' - already defined at address ${self.labels[label]:04X}")
+                else:
+                    self.labels[label] = self.current_address
             
             if not clean_line:
                 continue
-                
+            
             # Handle pseudo-instructions
             tokens = clean_line.split()
             if tokens:
@@ -314,32 +286,8 @@ class M6800Assembler:
             if not clean_line:
                 continue
             
-            # Handle label with colon
-            if ':' in clean_line:
-                parts = clean_line.split(':', 1)
-                clean_line = parts[1].strip() if len(parts) > 1 else ""
-            else:
-                # Handle label without colon (label followed by instruction or standalone)
-                tokens = clean_line.split()
-                if len(tokens) >= 2:
-                    potential_label = tokens[0]
-                    potential_instruction = tokens[1].upper()
-                    
-                    # If first token looks like a label and second token is a known instruction
-                    # BUT first token is NOT itself an instruction (instructions take priority)
-                    if (self._is_valid_label(potential_label) and 
-                        potential_label.upper() not in self.instruction_set and
-                        potential_label.upper() not in self.four_letter_mapping and
-                        (potential_instruction in self.instruction_set or 
-                         potential_instruction in self.four_letter_mapping or
-                         potential_instruction in ['ORG', 'END', '.ORG', '.END', '.BYTE'])):
-                        
-                        clean_line = ' '.join(tokens[1:])  # Remove label from line
-                elif len(tokens) == 1:
-                    # Check for standalone label
-                    potential_label = tokens[0]
-                    if self._is_valid_label(potential_label):
-                        clean_line = ""  # No instruction to process
+            # Use unified label parsing (ignore label name in second pass, just get remaining line)
+            _, clean_line = self._parse_line_for_label(clean_line, line_num)
             
             if not clean_line:
                 continue
@@ -442,47 +390,16 @@ class M6800Assembler:
         
         # Special handling for M6811 bit manipulation instructions
         if opcode in ['BSET', 'BCLR', 'BRSET', 'BRCLR']:
-            if len(operands) < 2:
-                raise ValueError(f"Instruction {opcode} requires two operands: address and bit mask")
+            parsed_info = self._parse_bit_manipulation_instruction(opcode, operands)
             
-            # Parse address operand
-            addr_operand = operands[0].strip()
-            
-            # Parse bit mask operand  
-            mask_operand = operands[1].strip()
-            if not mask_operand.startswith('#'):
-                raise ValueError(f"Bit mask for {opcode} must be immediate (#value)")
-            mask_value = self._parse_number(mask_operand[1:])
-            if mask_value > 0xFF:
-                raise ValueError(f"Bit mask ${mask_value:X} too large (max is $FF)")
+            # Get opcode byte for the addressing mode
+            addressing_mode = parsed_info['addressing_mode']
+            opcode_byte = instruction_def[addressing_mode]
+            machine_code = [opcode_byte, parsed_info['address_or_offset'], parsed_info['mask_value']]
                 
-            # Determine addressing mode from address operand
-            if ',X' in addr_operand.upper():
-                # Indexed addressing
-                offset_str = addr_operand.upper().replace(',X', '').strip()
-                offset = self._parse_number(offset_str) if offset_str else 0
-                if offset > 0xFF:
-                    raise ValueError(f"Indexed offset ${offset:X} too large (max is $FF)")
-                opcode_byte = instruction_def['IDX']
-                machine_code = [opcode_byte, offset, mask_value]
-            else:
-                # Direct addressing
-                address = self._parse_number(addr_operand)
-                if address > 0xFF:
-                    raise ValueError(f"Direct page address ${address:X} too large for {opcode} (max is $FF)")
-                opcode_byte = instruction_def['DIR']
-                machine_code = [opcode_byte, address, mask_value]
-                
-            # For branch instructions, add the branch target
+            # For branch instructions, add the branch target offset
             if opcode in ['BRSET', 'BRCLR']:
-                if len(operands) < 3:
-                    raise ValueError(f"Instruction {opcode} requires three operands: address, bit mask, and branch target")
-                    
-                branch_target = operands[2].strip()
-                if branch_target.upper() in self.labels:
-                    target_addr = self.labels[branch_target.upper()]
-                else:
-                    target_addr = self._parse_number(branch_target)
+                target_addr = parsed_info['branch_target']
                     
                 # Calculate relative offset  
                 instruction_length = len(machine_code) + 1  # +1 for the offset byte
@@ -732,23 +649,12 @@ class M6800Assembler:
         
         # Special handling for M6811 bit manipulation instructions
         if opcode in ['BSET', 'BCLR', 'BRSET', 'BRCLR']:
-            if len(operands) < 2:
-                return 3  # Minimum size: opcode + address + mask
-            
-            # Check addressing mode from first operand
-            addr_operand = operands[0].strip()
-            if ',X' in addr_operand.upper():
-                # Indexed addressing: opcode + offset + mask [+ branch offset for branch instructions]
-                size = 3
-            else:
-                # Direct addressing: opcode + address + mask [+ branch offset for branch instructions]
-                size = 3
-            
-            # Add branch offset byte for branch instructions
-            if opcode in ['BRSET', 'BRCLR']:
-                size += 1
-                
-            return size
+            try:
+                parsed_info = self._parse_bit_manipulation_instruction(opcode, operands)
+                return parsed_info['size']
+            except ValueError:
+                # Fallback to default size calculation if parsing fails
+                return 3 if opcode in ['BSET', 'BCLR'] else 4
         
         if not operands:
             # Inherent instructions - check for multi-byte opcodes
@@ -818,10 +724,11 @@ class M6800Assembler:
         return line.strip()
     
     def _is_valid_label(self, label: str) -> bool:
-        """Check if a label name is valid."""
+        """Check if a string is a valid label name."""
         if not label:
             return False
-        if label[0].isdigit():
+        # Labels should start with letter or underscore and contain only alphanumeric chars and underscores
+        if not (label[0].isalpha() or label[0] == '_'):
             return False
         return all(c.isalnum() or c == '_' for c in label)
     
@@ -1070,46 +977,160 @@ LABEL NOP     ; Label definition
     def _parse_bit_manipulation_operands(self, operand_string: str) -> List[str]:
         """
         Parse operands for bit manipulation instructions (BSET, BCLR, BRSET, BRCLR).
-        These instructions have comma-separated operands but need to preserve indexed addressing.
         
         Args:
-            operand_string: The operand string to parse
+            operand_string: String containing the operands
             
         Returns:
             List of parsed operands
         """
-        # Smart comma splitting that handles indexed addressing like "0,X"
+        if not operand_string.strip():
+            return []
+        
+        # Handle comma-separated operands considering parentheses and quotes
         operands = []
         current_operand = ""
-        i = 0
-        while i < len(operand_string):
-            char = operand_string[i]
-            if char == ',' and i < len(operand_string) - 1:
-                # Check if this comma is part of indexed addressing (like "0,X")
-                next_part = operand_string[i+1:].strip()
-                if next_part.upper().startswith('X'):
-                    # This is indexed addressing, include comma and X
-                    current_operand += char + 'X'
-                    i += 2  # Skip the X
-                    # Skip any whitespace after X
-                    while i < len(operand_string) and operand_string[i].isspace():
-                        i += 1
-                    continue
-                else:
-                    # This is a regular comma separator
-                    if current_operand.strip():
-                        operands.append(current_operand.strip())
-                    current_operand = ""
-                    i += 1
-                    continue
-            current_operand += char
-            i += 1
+        paren_depth = 0
+        in_quotes = False
         
-        # Add the last operand
+        for char in operand_string:
+            if char == '"' or char == "'":
+                in_quotes = not in_quotes
+                current_operand += char
+            elif char == '(' and not in_quotes:
+                paren_depth += 1
+                current_operand += char
+            elif char == ')' and not in_quotes:
+                paren_depth -= 1
+                current_operand += char
+            elif char == ',' and paren_depth == 0 and not in_quotes:
+                operands.append(current_operand.strip())
+                current_operand = ""
+            else:
+                current_operand += char
+        
         if current_operand.strip():
             operands.append(current_operand.strip())
-            
+        
         return operands
+    
+    def _parse_bit_manipulation_instruction(self, opcode: str, operands: List[str]) -> Dict[str, Any]:
+        """
+        Parse bit manipulation instructions (BSET, BCLR, BRSET, BRCLR) into a unified format.
+        
+        Args:
+            opcode: The instruction mnemonic
+            operands: List of operand strings
+            
+        Returns:
+            Dictionary containing parsed instruction data with:
+            - addressing_mode: 'DIR' or 'IDX'
+            - address_or_offset: Address (for DIR) or offset (for IDX)
+            - mask_value: Bit mask value
+            - branch_target: Branch target address (for BRSET/BRCLR only)
+            - size: Total instruction size in bytes
+        """
+        if len(operands) < 2:
+            raise ValueError(f"Instruction {opcode} requires at least two operands: address and bit mask")
+        
+        # Parse address operand
+        addr_operand = operands[0].strip()
+        
+        # Parse bit mask operand  
+        mask_operand = operands[1].strip()
+        if not mask_operand.startswith('#'):
+            raise ValueError(f"Bit mask for {opcode} must be immediate (#value)")
+        mask_value = self._parse_number(mask_operand[1:])
+        if mask_value > 0xFF:
+            raise ValueError(f"Bit mask ${mask_value:X} too large (max is $FF)")
+            
+        # Determine addressing mode from address operand
+        if ',X' in addr_operand.upper():
+            # Indexed addressing
+            offset_str = addr_operand.upper().replace(',X', '').strip()
+            address_or_offset = self._parse_number(offset_str) if offset_str else 0
+            if address_or_offset > 0xFF:
+                raise ValueError(f"Indexed offset ${address_or_offset:X} too large (max is $FF)")
+            addressing_mode = 'IDX'
+        else:
+            # Direct addressing
+            address_or_offset = self._parse_number(addr_operand)
+            if address_or_offset > 0xFF:
+                raise ValueError(f"Direct page address ${address_or_offset:X} too large for {opcode} (max is $FF)")
+            addressing_mode = 'DIR'
+            
+        # Calculate size: opcode + address/offset + mask + optional branch target
+        size = 3
+        branch_target = None
+        
+        # For branch instructions, parse the branch target
+        if opcode in ['BRSET', 'BRCLR']:
+            if len(operands) < 3:
+                raise ValueError(f"Instruction {opcode} requires three operands: address, bit mask, and branch target")
+                
+            branch_target_str = operands[2].strip()
+            if branch_target_str.upper() in self.labels:
+                branch_target = self.labels[branch_target_str.upper()]
+            else:
+                branch_target = self._parse_number(branch_target_str)
+            size = 4  # Add branch offset byte
+            
+        return {
+            'addressing_mode': addressing_mode,
+            'address_or_offset': address_or_offset,
+            'mask_value': mask_value,
+            'branch_target': branch_target,
+            'size': size
+        }
+
+    def _parse_line_for_label(self, clean_line: str, line_num: int) -> tuple[str, str]:
+        """Parse a line for labels and return (label_found, remaining_line).
+        
+        Args:
+            clean_line: Cleaned line of assembly code
+            line_num: Line number for error reporting (only used in first pass)
+            
+        Returns:
+            Tuple of (label_found_or_empty, remaining_instruction_line)
+        """
+        if not clean_line:
+            return "", ""
+            
+        # Check for label with colon first
+        if ':' in clean_line:
+            parts = clean_line.split(':', 1)
+            label = parts[0].strip()
+            remaining_line = parts[1].strip() if len(parts) > 1 else ""
+            
+            if self._is_valid_label(label):
+                return label, remaining_line
+            else:
+                return "", clean_line  # Invalid label, treat as regular line
+        else:
+            # Check for label without colon (label followed by instruction or standalone)
+            tokens = clean_line.split()
+            if len(tokens) >= 2:
+                potential_label = tokens[0]
+                potential_instruction = tokens[1].upper()
+                
+                # If first token looks like a label and second token is a known instruction
+                # BUT first token is NOT itself an instruction (instructions take priority)
+                if (self._is_valid_label(potential_label) and 
+                    potential_label.upper() not in self.instruction_set and
+                    potential_label.upper() not in self.four_letter_mapping and
+                    (potential_instruction in self.instruction_set or 
+                     potential_instruction in self.four_letter_mapping or
+                     potential_instruction in ['ORG', 'END', '.ORG', '.END', '.BYTE'])):
+                    
+                    remaining_line = ' '.join(tokens[1:])  # Remove label from line
+                    return potential_label, remaining_line
+            elif len(tokens) == 1:
+                # Check for standalone label
+                potential_label = tokens[0]
+                if self._is_valid_label(potential_label):
+                    return potential_label, ""  # No instruction to process
+                    
+        return "", clean_line  # No label found
 
 def main():
     """Test function for the assembler."""
