@@ -227,7 +227,10 @@ class M6800Assembler:
                     potential_instruction = tokens[1].upper()
                     
                     # If first token looks like a label and second token is a known instruction
+                    # BUT first token is NOT itself an instruction (instructions take priority)
                     if (self._is_valid_label(potential_label) and 
+                        potential_label.upper() not in self.instruction_set and
+                        potential_label.upper() not in self.four_letter_mapping and
                         (potential_instruction in self.instruction_set or 
                          potential_instruction in self.four_letter_mapping or
                          potential_instruction in ['ORG', 'END', '.ORG', '.END', '.BYTE'])):
@@ -280,44 +283,8 @@ class M6800Assembler:
                 elif opcode in self.instruction_set:
                     # Calculate instruction size for address calculation
                     try:
-                        # Special handling for bit manipulation instructions that use comma-separated operands
-                        if opcode in ['BSET', 'BCLR', 'BRSET', 'BRCLR']:
-                            # Join all tokens after the opcode and split by commas, but preserve indexed addressing
-                            operand_string = ' '.join(tokens[1:]) if len(tokens) > 1 else ""
-                            
-                            # Smart comma splitting that handles indexed addressing like "0,X"
-                            operands = []
-                            current_operand = ""
-                            i = 0
-                            while i < len(operand_string):
-                                char = operand_string[i]
-                                if char == ',' and i < len(operand_string) - 1:
-                                    # Check if this comma is part of indexed addressing (like "0,X")
-                                    next_part = operand_string[i+1:].strip()
-                                    if next_part.upper().startswith('X'):
-                                        # This is indexed addressing, include comma and X
-                                        current_operand += char + 'X'
-                                        i += 2  # Skip the X
-                                        # Skip any whitespace after X
-                                        while i < len(operand_string) and operand_string[i].isspace():
-                                            i += 1
-                                        continue
-                                    else:
-                                        # This is a regular comma separator
-                                        if current_operand.strip():
-                                            operands.append(current_operand.strip())
-                                        current_operand = ""
-                                        i += 1
-                                        continue
-                                current_operand += char
-                                i += 1
-                            
-                            # Add the last operand
-                            if current_operand.strip():
-                                operands.append(current_operand.strip())
-                        else:
-                            operands = tokens[1:] if len(tokens) > 1 else []
-                            
+                        # Use unified operand parsing for all instructions
+                        operands = self._parse_instruction_operands(opcode, tokens[1:] if len(tokens) > 1 else [])
                         size = self._calculate_instruction_size(opcode, operands)
                         self.current_address += size
                     except ValueError as e:
@@ -359,7 +326,10 @@ class M6800Assembler:
                     potential_instruction = tokens[1].upper()
                     
                     # If first token looks like a label and second token is a known instruction
+                    # BUT first token is NOT itself an instruction (instructions take priority)
                     if (self._is_valid_label(potential_label) and 
+                        potential_label.upper() not in self.instruction_set and
+                        potential_label.upper() not in self.four_letter_mapping and
                         (potential_instruction in self.instruction_set or 
                          potential_instruction in self.four_letter_mapping or
                          potential_instruction in ['ORG', 'END', '.ORG', '.END', '.BYTE'])):
@@ -442,44 +412,8 @@ class M6800Assembler:
             # Handle regular instructions
             elif opcode in self.instruction_set:
                 try:
-                    # Special handling for bit manipulation instructions that use comma-separated operands
-                    if opcode in ['BSET', 'BCLR', 'BRSET', 'BRCLR']:
-                        # Join all tokens after the opcode and split by commas, but preserve indexed addressing
-                        operand_string = ' '.join(tokens[1:]) if len(tokens) > 1 else ""
-                        
-                        # Smart comma splitting that handles indexed addressing like "0,X"
-                        operands = []
-                        current_operand = ""
-                        i = 0
-                        while i < len(operand_string):
-                            char = operand_string[i]
-                            if char == ',' and i < len(operand_string) - 1:
-                                # Check if this comma is part of indexed addressing (like "0,X")
-                                next_part = operand_string[i+1:].strip()
-                                if next_part.upper().startswith('X'):
-                                    # This is indexed addressing, include comma and X
-                                    current_operand += char + 'X'
-                                    i += 2  # Skip the X
-                                    # Skip any whitespace after X
-                                    while i < len(operand_string) and operand_string[i].isspace():
-                                        i += 1
-                                    continue
-                                else:
-                                    # This is a regular comma separator
-                                    if current_operand.strip():
-                                        operands.append(current_operand.strip())
-                                    current_operand = ""
-                                    i += 1
-                                    continue
-                            current_operand += char
-                            i += 1
-                        
-                        # Add the last operand
-                        if current_operand.strip():
-                            operands.append(current_operand.strip())
-                    else:
-                        operands = tokens[1:] if len(tokens) > 1 else []
-                        
+                    # Use unified operand parsing for all instructions
+                    operands = self._parse_instruction_operands(opcode, tokens[1:] if len(tokens) > 1 else [])
                     machine_code = self._assemble_instruction(opcode, operands)
                     
                     self.assembled_lines.append({
@@ -1113,6 +1047,69 @@ LABEL NOP     ; Label definition
             'RORA': 'ROR',  'RORB': 'ROR',  'PSHA': 'PSH',  'PSHB': 'PSH',
             'PULA': 'PUL',  'PULB': 'PUL',
         }
+
+    def _parse_instruction_operands(self, opcode: str, tokens: List[str]) -> List[str]:
+        """
+        Parse operands for all instructions, with special handling for bit manipulation instructions.
+        
+        Args:
+            opcode: The instruction opcode
+            tokens: The raw operand tokens
+            
+        Returns:
+            List of parsed operands
+        """
+        # For bit manipulation instructions, join all tokens and use special comma parsing
+        if opcode in ['BSET', 'BCLR', 'BRSET', 'BRCLR']:
+            operand_string = ' '.join(tokens)
+            return self._parse_bit_manipulation_operands(operand_string)
+        else:
+            # For regular instructions, return tokens as-is
+            return tokens
+
+    def _parse_bit_manipulation_operands(self, operand_string: str) -> List[str]:
+        """
+        Parse operands for bit manipulation instructions (BSET, BCLR, BRSET, BRCLR).
+        These instructions have comma-separated operands but need to preserve indexed addressing.
+        
+        Args:
+            operand_string: The operand string to parse
+            
+        Returns:
+            List of parsed operands
+        """
+        # Smart comma splitting that handles indexed addressing like "0,X"
+        operands = []
+        current_operand = ""
+        i = 0
+        while i < len(operand_string):
+            char = operand_string[i]
+            if char == ',' and i < len(operand_string) - 1:
+                # Check if this comma is part of indexed addressing (like "0,X")
+                next_part = operand_string[i+1:].strip()
+                if next_part.upper().startswith('X'):
+                    # This is indexed addressing, include comma and X
+                    current_operand += char + 'X'
+                    i += 2  # Skip the X
+                    # Skip any whitespace after X
+                    while i < len(operand_string) and operand_string[i].isspace():
+                        i += 1
+                    continue
+                else:
+                    # This is a regular comma separator
+                    if current_operand.strip():
+                        operands.append(current_operand.strip())
+                    current_operand = ""
+                    i += 1
+                    continue
+            current_operand += char
+            i += 1
+        
+        # Add the last operand
+        if current_operand.strip():
+            operands.append(current_operand.strip())
+            
+        return operands
 
 def main():
     """Test function for the assembler."""

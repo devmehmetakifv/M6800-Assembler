@@ -1,19 +1,32 @@
-m6800_assembler.py:
+Critical Issues (Must Address for Robust Demo)
 
-[x] Duplicate Label Detection: The current implementation (self.labels[label] = self.current_address) will simply overwrite a label if it's defined multiple times. This means only the last definition will be used, which can lead to hard-to-debug errors for the user. It would be better to raise an error for duplicate label definitions.
+1. Incomplete Simulator Instruction Set (Most Critical): While the m6800_assembler.py supports a very comprehensive set of M6800, M6801, and M6811 instructions (including various addressing modes for each), the simulator.py only implements a subset of these. Many fundamental M6800 instructions, even though they have opcodes and are handled by the assembler, are not present in the _execute_instruction method of the simulator for all their supported addressing modes.
 
-[x] TST Instruction Opcode: In _build_instruction_set, TST is defined with a DIR opcode of 0x0D. This is incorrect. 0x0D is the opcode for SEC (Set Carry Flag) in Inherent mode. TST itself does not have a Direct addressing mode in the M6800/M6801/M6811. Its memory addressing modes are Indexed (0x6D) and Extended (0x7D), and Inherent for accumulators A (0x4D) or B (0x5D). This is a critical bug that should be corrected, as it introduces an opcode conflict and incorrect instruction parsing for TST in direct mode.
+-> Examples of missing simulator implementations (for instructions correctly handled by assembler):
 
-[x] More Specific Error Messages: While errors are reported, some exceptions like ValueError are caught generically (e.g., "Line X: Exception: ..."). Providing more context (e.g., "Invalid operand for LDA," "Operand out of range for byte") would be beneficial for the user.
+(*) All ADC (Add with Carry) modes.
+(*) Most ADD modes (only IMM for A/B are in sim, not DIR, EXT, IDX).
+(*) All AND, BIT, EOR, ORA, SBC, SUB (except SUBA DIR, SUBB EXT) modes.
+(*) Most ASL, ASR, LSR, ROL, ROR modes (only accumulator INH are in sim, not DIR, EXT, IDX).
+(*) CLR, COM, NEG, INC, DEC (only accumulator INH are in sim, not DIR, EXT, IDX).
+(*) CBA (Compare A with B).
+(*) CLC, CLI, SEI, SEC, SEV (Condition Code operations).
+(*) TAP, TPA (Transfer A to/from CC).
+(*) JSR (Jump to Subroutine - both EXT and IDX modes, defined in assembler but missing in simulator).
+(*) BSR (Branch to Subroutine - Relative mode, defined in assembler but missing in simulator).
+(*) TST (Test - DIR, EXT, IDX modes for memory, assembler correctly removed DIR but has EXT/IDX/INH for A/B, simulator only has NEGA/B for inherent).
 
-simulator.py:
+1.2. CPD Instruction in Simulator (M6811): The assembler defines CPD (Compare D register) with opcode 0x1A83 (for immediate) and others. However, the simulator only has 0x18 as a prefix handler for M6811 extended instructions, not 0x1A. So, CPD instructions will currently be seen as "Unknown opcode".
+Recommendation: Add a elif opcode == 0x1A: block to _execute_instruction to handle CPD and other potential 0x1A prefixed instructions.
 
-[x] RTI Instruction: The implementation for RTI (Return from Interrupt) at opcode == 0x3B is missing. A full RTI instruction (like RTS) pops the PC, but then also pops the entire Condition Code Register, Accumulators B and A, and the Index Register X (9 bytes in total for M6800, potentially more for M6811 if Y is saved). Currently, it's not present, and it will fall into the "Unknown opcode" path, which is a significant omission for a control instruction. Correction: The simulator does not have 0x3B (RTI) implemented, and it would then fall into the "Unknown opcode" block. This is a missing instruction rather than a logical mistake in an existing one.
 
-[x] Missing M6811 Bit Instructions: The m6811_ref.txt mentions BSET, BCLR, BRSET, BRCLR, which are now fully implemented in both the assembler and simulator. All four instructions support both direct and indexed addressing modes and have been thoroughly tested with all test cases passing.
+2. Non-Critical / Logical Issues (Good to Refine)
 
-main.py:
+2.1. Assembler Parsing Consistency for Bit Manipulation Instructions:  In _first_pass and _second_pass, there's custom logic to parse operands for BSET, BCLR, BRSET, BRCLR (Lines 283-318 and 446-480). This logic is repeated and bypasses the general _parse_operand function.
+Recommendation: Refactor _parse_operand to handle these multi-part operands or create a dedicated helper for them that is called from _assemble_instruction and _calculate_instruction_size.
 
-[x] Memory Viewer: The "Memory Viewer" in the "Tools" menu is a placeholder. Implementing a proper, scrollable memory viewer would be a useful addition.
+2.2. H (Half-Carry) Flag Handling:  The H flag (bit 5 in CC) is included in _pack_cc_register and _unpack_cc_register, and DAA uses it, but no instruction explicitly sets or clears the H flag during arithmetic operations (e.g., ADD, ADC).
+Recommendation: For a truly accurate simulator, H should be updated by relevant arithmetic instructions (like ADD, ADC, ABA) based on the carry from bit 3 to bit 4.
 
-[x] Syntax Highlighting: While not required, adding basic syntax highlighting to the assembly_text editor would greatly improve readability.
+2.3. I (Interrupt Mask) Flag Handling: Similar to H, the I flag (bit 4 in CC) is included but not actively manipulated by instructions like SEI (Set Interrupt Mask) or CLI (Clear Interrupt Mask), which the assembler supports. SWI sets it, but that's the only place.
+Recommendation: Implement SEI and CLI in _execute_instruction to correctly set/clear cc_flags['I'].
